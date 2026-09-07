@@ -60,6 +60,21 @@ if get_settings().get("health_monitor_enabled", True):
     start_health_monitor()
 
 
+@app.before_request
+def require_local_header():
+    """Exige una cabecera no estandar en peticiones con efectos secundarios.
+
+    Una cabecera no estandar fuerza el preflight CORS del navegador, que una
+    pagina de otro origen no puede superar -- mitiga que una pestana externa
+    abierta en el mismo navegador dispare acciones reales (clicks, borrados)
+    via fetch() a ciegas. static/api_guard.js la agrega automaticamente a
+    toda peticion del frontend propio.
+    """
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        if request.headers.get("X-Tibia-Mapper") != "1":
+            return jsonify({"ok": False, "error": "Petición no autorizada."}), 403
+
+
 def _to_int(value):
     if value in (None, ""):
         return None

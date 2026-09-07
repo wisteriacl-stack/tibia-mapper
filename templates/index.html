@@ -171,6 +171,7 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='api_guard.js') }}"></script>
 <script>
 let routines={{ routines|tojson }}; let events={{ events|tojson }}; let settings={{ settings|tojson }}; let selectedRoutine=null; let recordingActive={{ 'true' if recording.active else 'false' }}; let recordingRoutineId={{ (recording.routine_id|tojson) if recording.routine_id else 'null' }};
 const byId=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c])); const chainArray=v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean); const toast=(id,text)=>byId(id).textContent=text||'';

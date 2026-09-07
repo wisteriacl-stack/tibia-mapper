@@ -121,6 +121,7 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='api_guard.js') }}"></script>
 <script>
   let settings = {{ settings|tojson }};
   let targets = {{ battle_targets|tojson }};
