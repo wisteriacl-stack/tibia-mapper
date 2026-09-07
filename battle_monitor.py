@@ -84,6 +84,9 @@ def _best_match_bruteforce(region_image: Image.Image, template: Image.Image, sca
     return best
 
 
+_FLAT_TEMPLATE_STD_EPSILON = 1.0
+
+
 def _best_match_cv2(region_image: Image.Image, template: Image.Image) -> dict[str, Any] | None:
     """Localiza la plantilla con correlación cruzada normalizada.
 
@@ -97,6 +100,14 @@ def _best_match_cv2(region_image: Image.Image, template: Image.Image) -> dict[st
     rh, rw = region.shape[:2]
     if tw > rw or th > rh:
         return None
+
+    if float(target.reshape(-1, 3).std()) < _FLAT_TEMPLATE_STD_EPSILON:
+        # TM_CCOEFF_NORMED normaliza por la desviacion estandar de la plantilla;
+        # con una plantilla practicamente plana (una referencia mal recortada,
+        # ej. una fila vacia de Battle) esa desviacion es ~0 y OpenCV devuelve
+        # 1.0 sin importar el contenido de la region (falso positivo garantizado).
+        # La metrica de error absoluto medio no tiene ese problema.
+        return _best_match_bruteforce(region_image, template)
 
     result = cv2.matchTemplate(region, target, cv2.TM_CCOEFF_NORMED)
     _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)

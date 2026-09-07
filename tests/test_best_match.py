@@ -64,3 +64,24 @@ def test_cv2_and_bruteforce_agree_on_position():
 
     assert cv2_match["x"] == bruteforce_match["x"] == 70
     assert cv2_match["y"] == bruteforce_match["y"] == 10
+
+
+def test_flat_template_does_not_produce_false_positive_with_cv2():
+    """Regresion: TM_CCOEFF_NORMED normaliza por la desviacion estandar de la
+    plantilla. Con una plantilla practicamente plana (ej. una referencia Battle
+    mal recortada que quedo en negro solido), esa desviacion es ~0 y OpenCV
+    devolvia 1.0 sin importar el contenido de la region -- un falso positivo
+    garantizado. Encontrado al recapturar una referencia real durante T15."""
+    if not bm._CV2_AVAILABLE:
+        pytest.skip("cv2 no disponible en este entorno")
+
+    flat_template = Image.new("RGB", (100, 40), (0, 0, 0))
+    unrelated_region = _noisy(100, 40, seed=42)
+
+    match = bm._best_match_cv2(unrelated_region, flat_template)
+
+    assert match["similarity"] < 0.9
+
+    same_flat_region = Image.new("RGB", (100, 40), (0, 0, 0))
+    match_same = bm._best_match_cv2(same_flat_region, flat_template)
+    assert match_same["similarity"] > 0.99
