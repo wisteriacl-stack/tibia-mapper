@@ -13,6 +13,11 @@ SETTINGS_PATH = RUNTIME_ROOT / "settings.json"
 # reactive la detección Battle al volver a abrir la aplicación.
 _battle_detection_enabled = False
 
+# Igual que _battle_detection_enabled: transitorio y apagado por defecto.
+# Un flag que genera clicks reales no debe reactivarse solo porque el
+# proceso se reinició con un settings.json de una sesión anterior.
+_battle_auto_action_enabled = False
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "dxgi_output_idx": 0,
     "map_validation_region": {"x": 1752, "y": 27, "width": 107, "height": 110},
@@ -90,6 +95,7 @@ def _normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
 def _with_runtime_flags(settings: dict[str, Any]) -> dict[str, Any]:
     result = dict(settings)
     result["battle_detection_enabled"] = bool(_battle_detection_enabled)
+    result["battle_auto_action_enabled"] = bool(_battle_auto_action_enabled)
     return result
 
 
@@ -110,13 +116,15 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_settings(data: dict[str, Any]) -> dict[str, Any]:
-    global _battle_detection_enabled
+    global _battle_detection_enabled, _battle_auto_action_enabled
 
     current = get_settings()
     incoming = dict(data or {})
 
     if "battle_detection_enabled" in incoming:
         _battle_detection_enabled = bool(incoming.get("battle_detection_enabled"))
+    if "battle_auto_action_enabled" in incoming:
+        _battle_auto_action_enabled = bool(incoming.get("battle_auto_action_enabled"))
 
     for region_key in (
         "map_validation_region",

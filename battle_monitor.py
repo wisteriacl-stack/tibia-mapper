@@ -320,6 +320,7 @@ def _release_current(
     *,
     reason: str,
     timed_out: bool,
+    auto_action_enabled: bool = False,
 ) -> dict[str, Any]:
     old_target = _runtime.current_target_id
     old_name = _runtime.action_target_name
@@ -341,7 +342,7 @@ def _release_current(
         action={
             "type": "battle_observation",
             "loot_enabled": loot_enabled,
-            "input_executed": False,
+            "input_executed": bool(auto_action_enabled),
         },
         details={
             "release_reason": reason,
@@ -396,6 +397,7 @@ def _update_battle_runtime(settings: dict[str, Any]) -> dict[str, Any]:
     scan = detect_battle_targets(settings)
     matches = list(scan.get("matches") or [])
     action_triggered = False
+    auto_action_enabled = bool(settings.get("battle_auto_action_enabled", False))
 
     if _runtime.action_locked and _runtime.current_target_id:
         similarity = scan.get("loot_similarity")
@@ -419,6 +421,7 @@ def _update_battle_runtime(settings: dict[str, Any]) -> dict[str, Any]:
                 _clean_scan_for_response(scan),
                 reason="loot_changed",
                 timed_out=False,
+                auto_action_enabled=auto_action_enabled,
             )
 
         elapsed = max(0.0, time.monotonic() - _runtime.action_started_at) if _runtime.action_started_at is not None else None
@@ -436,6 +439,7 @@ def _update_battle_runtime(settings: dict[str, Any]) -> dict[str, Any]:
                 _clean_scan_for_response(scan),
                 reason="timeout",
                 timed_out=True,
+                auto_action_enabled=auto_action_enabled,
             )
 
         return battle_runtime_status(_clean_scan_for_response(scan), action_triggered=False, released=False)

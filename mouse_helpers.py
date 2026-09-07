@@ -16,20 +16,25 @@ def click_mouse(
     pyautogui.click(button=button, clicks=clicks, interval=interval)
     return True
 
-def click_atack_on_battle(      
-    x=3196,y=681,
-    button="left",
-    clicks=1,
-    interval=0.0):
-    
-    pyautogui.moveTo(x, y, duration=0.25)
-    pyautogui.click(button=button, clicks=clicks, interval=interval)
-    pyautogui.press("a")
 
-    return {
-        "ok": "ok",
-    }
-    
+def click_attack_on_battle(
+    x: int,
+    y: int,
+    *,
+    press_key: str | None = "a",
+    button: str = "left",
+    clicks: int = 1,
+) -> dict[str, Any]:
+    """Click en la fila Battle detectada, en coordenadas reales de Windows.
+
+    x/y deben venir de screen_x/screen_y del match, no de una región DXGI.
+    """
+    pyautogui.moveTo(int(x), int(y), duration=0.25)
+    pyautogui.click(button=button, clicks=clicks)
+    if press_key:
+        pyautogui.press(press_key)
+    return {"ok": True, "x": int(x), "y": int(y), "key": press_key}
+
 
 
 def normalize_step(step: dict[str, Any], index: int) -> dict[str, Any]:

@@ -251,11 +251,12 @@ def battle_scan_passive():
             f"BATTLE gatillo pasivo | "
             f"id={pending.get('target_id')} | "
             f"serial={state.get('trigger_serial')} | "
-            f"action_ok={result.get('ok')}"
+            f"action_ok={result.get('ok')} | executed={result.get('executed')} | "
+            f"reason={result.get('reason')}"
         )
     if state.get("released"):
         log_event(
-            "BATTLE listo para nuevo análisis (sin input automático) | "
+            "BATTLE listo para nuevo análisis | "
             f"reason={state.get('release_reason')}"
         )
     return jsonify({"ok": True, "state": state})
