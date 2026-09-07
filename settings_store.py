@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import threading
 from typing import Any
 
 from app_paths import RUNTIME_ROOT
@@ -170,17 +169,3 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
         if key in incoming:
             current[key] = incoming[key]
     return save_settings(current)
-
-
-def _start_health_monitor_after_import() -> None:
-    try:
-        from health_monitor import start_health_monitor
-
-        start_health_monitor()
-    except Exception as exc:
-        print(f"HEALTH MONITOR no pudo iniciar: {type(exc).__name__}: {exc}")
-
-
-# Se difiere unas décimas para que settings_store termine de importarse antes de
-# que el hilo del monitor vuelva a pedir get_settings(). Evita el arranque circular.
-threading.Timer(0.25, _start_health_monitor_after_import).start()

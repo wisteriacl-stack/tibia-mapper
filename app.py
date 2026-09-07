@@ -42,12 +42,15 @@ from routine_store import (
     set_step_validation_image,
     update_routine,
 )
+from health_monitor import health_monitor_status, start_health_monitor, stop_health_monitor
 from session_log import get_log_path, log_event
 from settings_store import get_settings, update_settings
 
 app = Flask(__name__)
 init_db()
 log_event("Tibia Mapper iniciado")
+if get_settings().get("health_monitor_enabled", True):
+    start_health_monitor()
 
 
 def _to_int(value):
@@ -281,6 +284,18 @@ def battle_monitor_stop():
 @app.get("/api/battle/monitor/state")
 def battle_monitor_state():
     return jsonify({"ok": True, "monitor": battle_monitor_status()})
+
+
+@app.post("/api/health/start")
+def health_monitor_start():
+    start_health_monitor()
+    return jsonify({"ok": True, "health": health_monitor_status()})
+
+
+@app.post("/api/health/stop")
+def health_monitor_stop():
+    stop_health_monitor()
+    return jsonify({"ok": True, "health": health_monitor_status()})
 
 
 @app.get("/api/battle/decision")
