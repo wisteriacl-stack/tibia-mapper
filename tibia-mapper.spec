@@ -8,15 +8,16 @@ project = Path(SPECPATH)
 rapidocr_datas, rapidocr_binaries, rapidocr_hidden = collect_all('rapidocr_onnxruntime')
 onnx_datas, onnx_binaries, onnx_hidden = collect_all('onnxruntime')
 dxcam_datas, dxcam_binaries, dxcam_hidden = collect_all('dxcam')
+cv2_datas, cv2_binaries, cv2_hidden = collect_all('cv2')
 
 a = Analysis(
     ['launcher.py'],
     pathex=[str(project)],
-    binaries=rapidocr_binaries + onnx_binaries + dxcam_binaries,
+    binaries=rapidocr_binaries + onnx_binaries + dxcam_binaries + cv2_binaries,
     datas=[
         (str(project / 'templates'), 'templates'),
         (str(project / 'static'), 'static'),
-    ] + rapidocr_datas + onnx_datas + dxcam_datas,
+    ] + rapidocr_datas + onnx_datas + dxcam_datas + cv2_datas,
     hiddenimports=[
         'pyautogui',
         'PIL',
@@ -27,7 +28,8 @@ a = Analysis(
         'onnxruntime',
         'numpy',
         'dxcam',
-    ] + rapidocr_hidden + onnx_hidden + dxcam_hidden,
+        'cv2',
+    ] + rapidocr_hidden + onnx_hidden + dxcam_hidden + cv2_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

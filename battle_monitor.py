@@ -12,6 +12,13 @@ from capture_utils import get_live_frame
 from event_audit_log import log_action_event
 from session_log import log_event
 
+try:
+    import cv2
+    import numpy as np
+    _CV2_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _CV2_AVAILABLE = False
+
 
 @dataclass
 class BattleRuntimeState:
@@ -51,7 +58,7 @@ def _similarity(a: Image.Image, b: Image.Image) -> float:
     return max(0.0, min(1.0, 1.0 - (error / (255 * pixels))))
 
 
-def _best_match(region_image: Image.Image, template: Image.Image, scan_step: int = 2) -> dict[str, Any] | None:
+def _best_match_bruteforce(region_image: Image.Image, template: Image.Image, scan_step: int = 2) -> dict[str, Any] | None:
     region = region_image.convert("RGB")
     target = template.convert("RGB")
     tw, th = target.size
@@ -75,6 +82,37 @@ def _best_match(region_image: Image.Image, template: Image.Image, scan_step: int
                     "similarity": round(score, 4),
                 }
     return best
+
+
+def _best_match_cv2(region_image: Image.Image, template: Image.Image) -> dict[str, Any] | None:
+    """Localiza la plantilla con correlación cruzada normalizada.
+
+    TM_CCOEFF_NORMED resta la media de cada ventana antes de correlacionar, así
+    que el score no se desplaza cuando cambia el brillo global de la escena.
+    Devuelve la misma forma que _best_match_bruteforce() para no tocar a los llamadores.
+    """
+    region = np.asarray(region_image.convert("RGB"))
+    target = np.asarray(template.convert("RGB"))
+    th, tw = target.shape[:2]
+    rh, rw = region.shape[:2]
+    if tw > rw or th > rh:
+        return None
+
+    result = cv2.matchTemplate(region, target, cv2.TM_CCOEFF_NORMED)
+    _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+    return {
+        "x": int(max_loc[0]),
+        "y": int(max_loc[1]),
+        "width": int(tw),
+        "height": int(th),
+        "similarity": round(float(max_val), 4),
+    }
+
+
+def _best_match(region_image: Image.Image, template: Image.Image, scan_step: int = 2) -> dict[str, Any] | None:
+    if _CV2_AVAILABLE:
+        return _best_match_cv2(region_image, template)
+    return _best_match_bruteforce(region_image, template, scan_step=scan_step)
 
 
 def _crop_absolute(image: Image.Image, region: dict[str, Any]) -> Image.Image:
@@ -171,6 +209,7 @@ def _scan_idle(settings: dict[str, Any], scan_id: int, total_started: float) -> 
             "BATTLE MATCH DEBUG | "
             f"target={target_id} | template={template.width}x{template.height} | "
             f"region={battle_crop.width}x{battle_crop.height} | "
+            f"backend={'cv2' if _CV2_AVAILABLE else 'bruteforce'} | "
             f"best_similarity={similarity if similarity is not None else 'None'} | "
             f"threshold={threshold:.4f} | accepted={accepted} | "
             f"x={debug_item['x']} | y={debug_item['y']}"
