@@ -129,18 +129,21 @@
       <div class="muted small">total ${Number(t.total_scan_ms || 0).toFixed(0)} ms · captura ${Number(t.capture_ms || 0).toFixed(0)} ms · Battle ${Number(t.battle_match_ms || 0).toFixed(0)} ms · comparación ${Number(t.visual_compare_ms || 0).toFixed(0)} ms</div>`;
   }
 
+  // El bucle de detección real vive en el backend (battle_monitor_thread);
+  // aquí solo se lee el estado para refrescar la UI cada cierto intervalo.
   async function scanBattleOnce() {
     if (!battleRunning) return;
     const status = byId('battleMonitorStatus');
     try {
-      status.textContent = 'Analizando Battle…';
-      const data = await fetch('/api/battle/scan-passive', {method:'POST'}).then(r=>r.json());
+      status.textContent = 'Leyendo estado Battle…';
+      const data = await fetch('/api/battle/monitor/state').then(r=>r.json());
       if (!data.ok) {
-        status.textContent = data.error || 'Error al analizar Battle.';
+        status.textContent = data.error || 'Error al leer el estado de Battle.';
         return;
       }
 
-      const state = data.state || {};
+      const monitor = data.monitor || {};
+      const state = monitor.last_state || monitor.runtime || {};
       if (state.busy) {
         status.textContent = 'Análisis anterior todavía en curso; se omitió este ciclo.';
         return;
@@ -200,6 +203,7 @@
     byId('battleMonitorStatus').textContent = 'Iniciando detección…';
     try {
       await setBattleDetectionEnabled(true);
+      await fetch('/api/battle/monitor/start', {method: 'POST'});
       battleRunning = true;
       stopBtn.disabled = false;
       await scanBattleOnce();
@@ -220,6 +224,7 @@
     byId('stopBattleMonitorBtn').disabled = true;
     byId('battleMonitorStatus').textContent = 'Deteniendo…';
     try {
+      await fetch('/api/battle/monitor/stop', {method: 'POST'});
       await setBattleDetectionEnabled(false);
       await fetch('/api/battle/reset', {method:'POST'});
     } catch (_) {}

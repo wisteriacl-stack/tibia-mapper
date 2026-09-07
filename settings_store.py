@@ -125,6 +125,13 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
 
     if "battle_detection_enabled" in incoming:
         _battle_detection_enabled = bool(incoming.get("battle_detection_enabled"))
+        if not _battle_detection_enabled:
+            try:
+                from battle_monitor_thread import stop_battle_monitor
+
+                stop_battle_monitor()
+            except Exception as exc:
+                print(f"BATTLE MONITOR no pudo detenerse: {type(exc).__name__}: {exc}")
     if "battle_auto_action_enabled" in incoming:
         _battle_auto_action_enabled = bool(incoming.get("battle_auto_action_enabled"))
 

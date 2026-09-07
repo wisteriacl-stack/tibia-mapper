@@ -174,46 +174,58 @@
     }
   }
 
-  async function scanBattleOnce() {
+  // El bucle de detección real vive en el backend (battle_monitor_thread).
+  // Aquí solo leemos el estado para refrescar la UI; el polling de lectura
+  // puede ser más lento sin afectar la frecuencia real de escaneo.
+  async function readBattleMonitorState() {
     if (!battleScanning) return;
-    byId('battleMonitorState').textContent = 'Analizando…';
-    const data = await fetch('/api/battle/scan-passive', {method:'POST'})
+    const data = await fetch('/api/battle/monitor/state')
       .then(r => r.json())
       .catch(err => ({ok:false,error:String(err)}));
 
     if (!battleScanning) return;
     if (!data.ok) {
       byId('battleMonitorState').textContent = 'Error';
-      byId('battleMonitorInfo').textContent = data.error || 'No se pudo analizar Battle.';
-      scheduleNextScan();
+      byId('battleMonitorInfo').textContent = data.error || 'No se pudo leer el estado de Battle.';
+      scheduleNextRead();
       return;
     }
 
-    byId('battleMonitorState').textContent = 'Activo';
-    renderScan(data.state || {});
-    scheduleNextScan();
+    const monitor = data.monitor || {};
+    byId('battleMonitorState').textContent = monitor.active ? 'Activo' : 'Detenido';
+    // last_state trae el scan completo (match_debug, timing); runtime es solo
+    // el estado del target actual sin volver a escanear.
+    renderScan(monitor.last_state || monitor.runtime || {});
+    scheduleNextRead();
   }
 
-  function scheduleNextScan() {
+  function scheduleNextRead() {
     if (!battleScanning) return;
     clearTimeout(battleTimer);
-    const seconds = Math.max(0.5, Number(settings?.battle_poll_seconds || 1));
-    battleTimer = setTimeout(scanBattleOnce, seconds * 1000);
+    battleTimer = setTimeout(readBattleMonitorState, 1500);
   }
 
   async function startBattleMonitor() {
     if (battleScanning) return;
     await refreshBattleData();
-    battleScanning = true;
     byId('startBattleMonitorBtn').disabled = true;
+    byId('battleMonitorState').textContent = 'Iniciando…';
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({battle_detection_enabled: true}),
+      });
+      await fetch('/api/battle/monitor/start', {method: 'POST'});
+    } catch (_) {}
+    battleScanning = true;
     byId('stopBattleMonitorBtn').disabled = false;
     byId('battleMonitorState').textContent = 'Activo';
     const seconds = Math.max(0.5, Number(settings?.battle_poll_seconds || 1));
-    byId('battleMonitorInfo').textContent = `Analizando cada ${seconds.toFixed(1)} s.`;
-    scanBattleOnce();
+    byId('battleMonitorInfo').textContent = `El backend analiza cada ${seconds.toFixed(1)} s.`;
+    readBattleMonitorState();
   }
 
-  function stopBattleMonitor() {
+  async function stopBattleMonitor() {
     battleScanning = false;
     clearTimeout(battleTimer);
     battleTimer = null;
@@ -222,6 +234,13 @@
     byId('battleMonitorState').textContent = 'Detenido';
     byId('battleMonitorInfo').textContent = 'Monitor Battle detenido.';
     if (byId('battlePresenceInfo')) byId('battlePresenceInfo').textContent = 'Presencia Battle: sin datos.';
+    try {
+      await fetch('/api/battle/monitor/stop', {method: 'POST'});
+      await fetch('/api/settings', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({battle_detection_enabled: false}),
+      });
+    } catch (_) {}
   }
 
   addBattleTab();

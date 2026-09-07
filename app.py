@@ -3,6 +3,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 from battle_action_executor import execute_battle_action
 from battle_monitor import battle_runtime_status, reset_battle_runtime, update_battle_runtime
+from battle_monitor_thread import battle_monitor_status, start_battle_monitor, stop_battle_monitor
 from battle_store import (
     battle_target_action_image_path,
     battle_target_image_path,
@@ -238,6 +239,11 @@ def battle_scan():
 
 @app.post("/api/battle/scan-passive")
 def battle_scan_passive():
+    """OBSOLETA: el bucle de detección ahora vive en el backend (battle_monitor_thread).
+
+    Se conserva temporalmente para no romper una pestaña abierta con una
+    versión anterior del frontend. Usar /api/battle/monitor/start|stop|state.
+    """
     settings = get_settings()
     try:
         state = update_battle_runtime(settings)
@@ -260,6 +266,21 @@ def battle_scan_passive():
             f"reason={state.get('release_reason')}"
         )
     return jsonify({"ok": True, "state": state})
+
+
+@app.post("/api/battle/monitor/start")
+def battle_monitor_start():
+    return jsonify({"ok": True, "monitor": start_battle_monitor()})
+
+
+@app.post("/api/battle/monitor/stop")
+def battle_monitor_stop():
+    return jsonify({"ok": True, "monitor": stop_battle_monitor()})
+
+
+@app.get("/api/battle/monitor/state")
+def battle_monitor_state():
+    return jsonify({"ok": True, "monitor": battle_monitor_status()})
 
 
 @app.get("/api/battle/decision")
