@@ -24,32 +24,28 @@
     "width": 175,
     "height": 31
   },
-  "bestiary_tracker_region": {
-    "x": 60,
-    "y": 52,
-    "width": 380,
-    "height": 160
-  },
   "loot_tracker_region": {
     "x": 940,
     "y": 260,
     "width": 360,
     "height": 295
   },
-  "loot_similarity_threshold": 0.975,
-  "loot_change_confirmations": 1,
   "health_value_region": {
     "x": 800,
     "y": 300,
     "width": 180,
     "height": 80
   },
+  "loot_similarity_threshold": 0.975,
+  "loot_change_confirmations": 1,
   "health_monitor_enabled": true,
   "health_poll_seconds": 5.0,
   "health_log_threshold": 60,
+  "health_ocr_max_value": 50000,
   "validation_similarity_threshold": 0.9,
   "validation_timeout_seconds": 5.0,
   "validation_poll_seconds": 0.5,
+  "validation_failure_continues": false,
   "step_delay_seconds": 2.0,
   "battle_similarity_threshold": 0.9,
   "battle_poll_seconds": 1.0,

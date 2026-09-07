@@ -19,6 +19,13 @@ Read this file **before modifying anything**.
 > Also: the actual git remote configured for this checkout is
 > `https://github.com/escuelaalz1-debug/titian-mapper`, not `tibia-mapper` as named below —
 > flagging the discrepancy rather than silently correcting it.
+>
+> **T6-T14 also implemented (2026-09-07):** notably T13 — `app_ai.py` no longer exists.
+> Its two responsibilities (registering `/api/ai/*` and `/api/map/*` via `register_ai_routes`
+> / `register_map_routes`, and the `ai_ui.js` injection `after_request` hook) were merged
+> directly into `app.py`, since `launcher.py` (used by `tibia-mapper.spec` to build the EXE)
+> only ever imported `app.py` — the packaged EXE never had the AI/map routes. Run `python
+> app.py` for everything now; there is no separate AI entry point anymore.
 
 ## Repository
 
