@@ -1,0 +1,483 @@
+# CODEX_CONTEXT.md
+
+## Purpose
+
+This file is the handoff context for continuing development of this repository in Codex/Desktop without having to replay the full ChatGPT conversation.
+
+Read this file **before modifying anything**.
+
+## Repository
+
+- Repository: `escuelaalz1-debug/tibia-mapper`
+- Working branch for the current AI/map work: `feature/ai-advisor`
+- Do not modify `main` unless explicitly requested.
+- Prefer reading the real files in the repo before assuming function names, module names, routes, settings, or data structures.
+
+## Project overview
+
+The application is a local Python/Flask Windows desktop-support tool that currently includes:
+
+- routine creation/editing/execution
+- mouse-coordinate recording
+- OBS/DXGI-based image capture
+- Battle visual detection
+- Loot-change tracking
+- passive Health Monitor OCR
+- logs and diagnostics
+- an AI Advisor layer
+- offline TibiaMaps data integration
+
+The project is primarily developed and run on Windows.
+
+## Current application entrypoints
+
+### Normal app
+
+```powershell
+python app.py
+```
+
+### AI-enabled app
+
+```powershell
+python app_ai.py
+```
+
+`app_ai.py` imports the existing Flask app and registers the AI/map routes and AI UI additions.
+
+## Routine recording
+
+Key behavior in `recorder.py`:
+
+- `F12`: append one manual mouse coordinate to the active routine.
+- `F11`: capture a checkpoint from OBS/DXGI for the last step.
+- `F9`: toggle timed mouse sampling.
+- Timed sampling records the current mouse position every 2 seconds.
+- It does not move or click the mouse.
+- Timed coordinates use the same normal routine step format.
+
+Typical step:
+
+```json
+{
+  "type": "coordinate",
+  "x": 2030,
+  "y": 417
+}
+```
+
+Recording status also exposes timed-mode fields such as:
+
+```text
+timed_active
+timed_interval_seconds
+timed_sample_count
+```
+
+`static/execution_ui.js` was patched so routine polling does not unnecessarily re-render/re-download the same checkpoint every second.
+
+## OBS / DXGI architecture
+
+Important rule:
+
+```text
+READING / ANALYSIS -> OBS / DXGI / screen-1-local coordinates
+INTERACTION        -> real Windows/game screen coordinates
+```
+
+Do not mix OBS scene coordinates with Windows input coordinates.
+
+Routine checkpoints were changed to use OBS/DXGI instead of physical-screen/NVIDIA capture.
+
+## Battle / Loot state
+
+Current Battle logic uses visual matching and then Loot visual change as the completion signal.
+
+Bestiary is no longer the preferred Battle-completion signal. Loot is considered more reliable.
+
+While Battle is waiting for Loot change, the scanner focuses on Loot tracking rather than searching new Battle targets.
+
+Relevant current settings include approximately:
+
+```jsonz
+{
+  "loot_similarity_threshold": 0.975,
+  "loot_change_confirmations": 1,
+  "battle_poll_seconds": 1.0,
+  "battle_similarity_threshold": 0.90,
+  "battle_scan_step": 2,
+  "battle_action_timeout_seconds": 5.0
+}
+```
+
+The 5-second Battle timeout is a fallback. Loot change should normally release the state earlier.
+
+Useful log patterns:
+
+```text
+BATTLE LOOT CHANGE
+BATTLE STATE
+BATTLE TRANSITION
+loot_similarity
+```
+
+If diagnosing Battle timeout, inspect actual `loot_similarity` values around the expected Loot update instead of guessing.
+
+## Health Monitor
+
+Main file: `health_monitor.py`
+
+It is passive/read-only.
+
+It:
+
+- captures from OBS/DXGI
+- crops `health_value_region`
+- runs numeric OCR
+- stores last HP value
+- logs when HP crosses the configured threshold
+- logs recovery
+- records OCR/provider errors
+
+Current conceptual settings:
+
+```json
+{
+  "health_value_region": {
+    "x": 800,
+    "y": 300,
+    "width": 180,
+    "height": 80
+  },
+  "health_monitor_enabled": true,
+  "health_poll_seconds": 5.0,
+  "health_log_threshold": 60
+}
+```
+
+The threshold is currently a raw HP number, not a percentage.
+
+Health OCR was strengthened to use a larger OCR scale for this numeric region and better diagnostics.
+
+Useful log patterns:
+
+```text
+HEALTH MONITOR iniciado
+HEALTH ALERT
+HEALTH RECOVERY
+HEALTH MONITOR ERROR
+```
+
+If Health Monitor fails, inspect the exact error and raw OCR token diagnostics before changing coordinates.
+
+## AI Advisor
+
+Branch `feature/ai-advisor` adds a local AI analysis layer.
+
+Main files:
+
+```text
+ai_advisor.py
+ai_routes.py
+static/ai_ui.js
+app_ai.py
+```
+
+The AI Advisor is advisory/read-only. It receives structured application state and returns analysis/recommendations.
+
+### Local provider
+
+The chosen free provider is:
+
+```text
+Ollama
+model: qwen2.5:3b
+base URL: http://127.0.0.1:11434
+```
+
+Environment overrides:
+
+```text
+OLLAMA_BASE_URL
+OLLAMA_MODEL
+```
+
+The advisor calls Ollama `/api/chat` with JSON-format output requested.
+
+If Ollama is unavailable, the app falls back to a local heuristic analyzer instead of crashing.
+
+### AI API
+
+```text
+POST /api/ai/analyze
+GET  /api/ai/status
+```
+
+`POST /api/ai/analyze` can include a routine id and optional map coordinates/context.
+
+The response shape is intended to look like:
+
+```json
+{
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "status": "warning",
+  "summary": "...",
+  "findings": ["..."],
+  "recommendation": "...",
+  "confidence": 0.88
+}
+```
+
+The AI should explain state/errors and recommend what to inspect. It should not execute mouse/keyboard actions.
+
+## Ollama setup
+
+There is a PowerShell setup script:
+
+```powershell
+.\scripts\setup_ollama_ai.ps1
+```
+
+It is intended to:
+
+- verify/install Ollama
+- start Ollama if needed
+- pull `qwen2.5:3b`
+- test `/api/chat`
+- prepare/update local TibiaMaps data
+
+After setup:
+
+```powershell
+python app_ai.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5000
+```
+
+## TibiaMaps offline integration
+
+The project now uses a local clone of:
+
+```text
+https://github.com/tibiamaps/tibia-map-data.git
+```
+
+Local destination:
+
+```text
+data/tibia-map-data
+```
+
+This directory is ignored by Git and should remain local/cache data.
+
+Update/download script:
+
+```powershell
+.\scripts\update_tibiamaps.ps1
+```
+
+The script should:
+
+- clone the repo if missing
+- otherwise run `git pull --ff-only`
+
+Main local map service:
+
+```text
+tibia_map_service.py
+```
+
+Expected local source files include:
+
+```text
+data/tibia-map-data/data/bounds.json
+data/tibia-map-data/data/markers.json
+data/tibia-map-data/data/floor-XX-map.png
+data/tibia-map-data/data/floor-XX-pathfinding.png
+```
+
+### Map API
+
+```text
+GET /api/map/status
+GET /api/map/position?x=31946&y=31900&z=7
+```
+
+The map service should return structured information such as:
+
+- requested Tibia position
+- pixel coordinate in local floor image
+- map RGB/color
+- pathfinding state
+- walkability
+- friction/cost when available
+- nearby markers
+- viewer URL
+- local-cache source metadata
+
+Example target coordinate used during development:
+
+```text
+x=31946
+y=31900
+z=7
+```
+
+### Pathfinding interpretation
+
+Current intended interpretation from TibiaMaps data:
+
+```text
+#FFFF00 -> non-walkable
+#FF00FF -> unexplored
+other grayscale values -> walkable/friction value
+```
+
+Do not assume every non-yellow/non-magenta RGB value is automatically valid without checking the actual dataset if results look strange.
+
+## AI + map integration
+
+The AI panel was extended to optionally include local TibiaMaps context.
+
+The UI allows map coordinates and can request map context alongside Battle/Health/log/routine context.
+
+The AI should receive a structured `map` object rather than scraping the website during each request.
+
+The design goal is:
+
+```text
+first download/update map repo
+-> work from local files
+-> no repeated tibiamaps.io requests
+-> send compact structured map context to Ollama
+```
+
+## Routine-path analysis in AI Advisor
+
+The advisor includes a small geometry analyzer for recorded routine coordinates.
+
+It currently computes concepts like:
+
+- coordinate count
+- total pixel distance
+- near-duplicate consecutive points
+- large jumps
+- quiet vs movement segments
+
+This is useful for cleaning/understanding F9 timed recordings.
+
+Do not automatically rewrite or execute a routine based only on AI output. Present suggested cleanup/analysis first.
+
+## Key files to inspect before changes
+
+Before modifying functionality, read the relevant real files. Common files include:
+
+```text
+app.py
+app_ai.py
+app_paths.py
+settings_store.py
+settings.json
+recorder.py
+routine_store.py
+routine_executor.py
+mouse_helpers.py
+checkpoint_store.py
+capture_utils.py
+battle_monitor.py
+battle_store.py
+health_monitor.py
+bestiary_reader.py
+ai_advisor.py
+ai_routes.py
+tibia_map_service.py
+static/execution_ui.js
+static/ai_ui.js
+scripts/setup_ollama_ai.ps1
+scripts/update_tibiamaps.ps1
+.gitignore
+requirements.txt
+```
+
+Do not assume current SHAs or code from this document are authoritative. The repo files are authoritative.
+
+## Current commands for local development
+
+Switch to the AI branch:
+
+```powershell
+git fetch
+git checkout feature/ai-advisor
+git pull
+```
+
+Install Python dependencies if needed:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Download/update map data:
+
+```powershell
+.\scripts\update_tibiamaps.ps1
+```
+
+Prepare Ollama + model:
+
+```powershell
+.\scripts\setup_ollama_ai.ps1
+```
+
+Run AI-enabled app:
+
+```powershell
+python app_ai.py
+```
+
+Useful URLs:
+
+```text
+http://127.0.0.1:5000
+http://127.0.0.1:5000/api/ai/status
+http://127.0.0.1:5000/api/map/status
+http://127.0.0.1:5000/api/map/position?x=31946&y=31900&z=7
+```
+
+## How Codex should start a session
+
+When opening this repo in Codex, first do this:
+
+1. Read `CODEX_CONTEXT.md`.
+2. Run `git status` and `git branch --show-current`.
+3. Confirm branch is `feature/ai-advisor` before writing files.
+4. Inspect the actual files related to the requested task.
+5. Run the smallest relevant tests/checks before and after changes.
+6. Do not claim a test passed unless it was actually executed.
+7. Keep `main` untouched unless explicitly requested.
+8. Prefer small, reviewable commits.
+
+## Suggested first Codex task
+
+A good first local task is:
+
+```text
+Read CODEX_CONTEXT.md and inspect the current feature/ai-advisor branch.
+Verify Ollama, qwen2.5:3b, the local tibia-map-data clone, /api/ai/status,
+/api/map/status, and /api/map/position?x=31946&y=31900&z=7.
+Run the app locally, capture any errors, and fix only the AI/map integration issues you can reproduce.
+Do not modify main.
+```
+
+## Notes for continuity
+
+- The user prefers direct, practical fixes and copy-pasteable PowerShell commands.
+- If a problem is uncertain, inspect logs/code rather than inventing names or causes.
+- For Battle completion, prefer Loot-based evidence over reintroducing Bestiary logic.
+- For map data, prefer local cached `tibia-map-data` over repeated remote requests.
+- For AI, prefer local Ollama and preserve a fallback path when Ollama is unavailable.

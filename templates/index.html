@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tibia Mapper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<div class="app-shell">
+    <header class="topbar">
+        <div>
+            <div class="eyebrow">LOCAL AUTOMATION WORKSPACE</div>
+            <h1>Tibia Mapper</h1>
+            <p class="muted">Rutinas, checkpoints visuales, eventos y configuración desde un solo lugar.</p>
+        </div>
+        <div class="status-card">
+            <span class="status-dot" id="recordingDot"></span>
+            <div>
+                <strong id="recordingState">{{ 'Grabando' if recording.active else 'Grabación detenida' }}</strong>
+                <div class="muted small">F12 = coordenada · F11 = imagen del último paso</div>
+            </div>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab active" data-target="routinesSection">Rutinas</button>
+        <button class="tab" data-target="eventsSection">Eventos</button>
+        <button class="tab" data-target="settingsSection">Configuración</button>
+    </nav>
+
+    <section id="routinesSection" class="tab-section active">
+        <div class="dashboard-grid">
+            <article class="panel hero-panel">
+                <div class="panel-title-row"><div><span class="badge">EJECUCIÓN</span><h2>Ejecutar rutina</h2></div><span class="muted small">Inicio manual con F12</span></div>
+                <div class="action-row">
+                    <label class="grow">Rutina<input id="routineNameInput" list="routineNames" placeholder="Selecciona o escribe el nombre"><datalist id="routineNames"></datalist></label>
+                    <button id="startRoutineBtn" class="primary">Iniciar</button>
+                </div>
+                <div class="info-box">Al iniciar, lleva Tibia al primer plano y presiona <kbd>F12</kbd>.</div>
+                <p id="runStatus" class="status"></p>
+            </article>
+            <article class="panel">
+                <div class="panel-title-row"><h2>Nueva rutina</h2><span class="badge subtle">JSON</span></div>
+                <form id="createRoutineForm" class="stack">
+                    <label>Nombre<input id="newRoutineName" required></label>
+                    <label>Versión<input id="newRoutineVersion" required value="1.0"></label>
+                    <button type="submit">Crear y editar</button>
+                </form>
+                <p id="createStatus" class="status"></p>
+            </article>
+        </div>
+
+        <article class="panel">
+            <div class="panel-title-row"><div><span class="badge">BIBLIOTECA</span><h2>Rutinas</h2></div><button id="refreshBtn" class="secondary">Actualizar</button></div>
+            <div id="routineCards" class="card-grid"></div>
+        </article>
+
+        <article id="editorPanel" class="panel hidden">
+            <div class="panel-title-row"><div><span class="badge">EDITOR</span><h2 id="editorTitle">Rutina</h2><p id="editorSubtitle" class="muted"></p></div><button id="closeEditorBtn" class="secondary">Cerrar</button></div>
+            <div class="grid cols-2"><label>Nombre<input id="editName"></label><label>Versión<input id="editVersion"></label></div>
+            <button id="saveRoutineBtn">Guardar metadatos y coordenadas</button>
+            <div class="recording-box">
+                <div><strong>Modo grabación</strong><p class="muted">F12 agrega un paso. F11 guarda la imagen del mapa del último paso.</p></div>
+                <div class="action-row compact"><button id="startRecordingBtn" class="primary">Iniciar grabación</button><button id="stopRecordingBtn" class="danger">Detener</button></div>
+            </div>
+            <p id="recordingEditorState" class="status"></p>
+            <div class="insert-row"><strong>Insertar paso manual</strong><label>Posición<input id="insertIndex" type="number" min="0" value="0"></label><label>X<input id="insertX" type="number"></label><label>Y<input id="insertY" type="number"></label><button id="insertStepBtn" class="secondary">Agregar</button></div>
+            <div class="steps-header"><div><h3>Pasos</h3><p class="muted small">Cada paso puede tener una imagen de referencia independiente.</p></div><span id="checkpointSummary" class="badge subtle"></span></div>
+            <div id="stepsList" class="steps-list"></div>
+            <p id="editorStatus" class="status"></p>
+        </article>
+    </section>
+
+    <section id="eventsSection" class="tab-section">
+        <div class="dashboard-grid">
+            <article class="panel">
+                <div class="panel-title-row"><div><span class="badge">DETECCIÓN</span><h2>Crear evento</h2></div></div>
+                <form id="eventForm" class="stack">
+                    <div class="grid cols-2"><label>Nombre<input id="eventName" required></label><label>Categoría<select id="eventCategory"><option value="custom">custom</option><option value="move_mouse">move_mouse</option><option value="click">click</option><option value="write">write</option><option value="detect_text">detect_text</option></select></label></div>
+                    <div class="grid cols-4"><label>X<input id="eventX" type="number" required></label><label>Y<input id="eventY" type="number" required></label><label>Ancho<input id="eventWidth" type="number" min="1" required></label><label>Alto<input id="eventHeight" type="number" min="1" required></label></div>
+                    <label>Texto/configuración de acción<textarea id="eventActionCode" rows="4"></textarea></label>
+                    <label>Eventos encadenados<input id="eventChain"></label>
+                    <button type="submit">Crear evento</button>
+                </form>
+                <p id="eventStatus" class="status"></p>
+            </article>
+            <article class="panel"><div class="panel-title-row"><div><span class="badge">MONITOR</span><h2>Eventos configurados</h2></div></div><div id="eventCards" class="card-grid single"></div></article>
+        </div>
+        <article id="eventEditorPanel" class="panel hidden">
+            <div class="panel-title-row"><h2>Editar evento</h2><button id="closeEventEditorBtn" class="secondary">Cerrar</button></div>
+            <input id="editEventId" type="hidden">
+            <div class="grid cols-2"><label>Nombre<input id="editEventName"></label><label>Categoría<select id="editEventCategory"><option>custom</option><option>move_mouse</option><option>click</option><option>write</option><option>detect_text</option></select></label></div>
+            <div class="grid cols-4"><label>X<input id="editEventX" type="number"></label><label>Y<input id="editEventY" type="number"></label><label>Ancho<input id="editEventWidth" type="number"></label><label>Alto<input id="editEventHeight" type="number"></label></div>
+            <label>Texto/configuración de acción<textarea id="editEventActionCode" rows="5"></textarea></label><label>Cadena<input id="editEventChain"></label>
+            <div class="action-row"><button id="saveEventBtn">Guardar</button><button id="deleteEventBtn" class="danger">Eliminar</button></div><p id="eventEditorStatus" class="status"></p>
+        </article>
+    </section>
+
+    <section id="settingsSection" class="tab-section">
+        <article class="panel settings-panel">
+            <div class="panel-title-row"><div><span class="badge">GLOBAL</span><h2>Configuración</h2><p class="muted">Las regiones se guardan sobre la resolución original de la captura.</p></div></div>
+            <form id="settingsForm" class="stack">
+                <fieldset>
+                    <legend>Coordenadas mapa validación</legend>
+                    <div class="grid cols-4"><label>X<input id="settingsMapX" type="number"></label><label>Y<input id="settingsMapY" type="number"></label><label>Ancho<input id="settingsMapWidth" type="number" min="1"></label><label>Alto<input id="settingsMapHeight" type="number" min="1"></label></div>
+                    <div class="region-tools"><div><strong>Selección visual</strong><p class="muted small">Carga una captura completa del escritorio y arrastra un recuadro sobre el minimapa.</p></div><button type="button" id="selectMapRegionBtn" class="secondary">Seleccionar desde imagen</button></div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Región Battle</legend>
+                    <div class="grid cols-4"><label>X<input id="settingsBattleX" type="number"></label><label>Y<input id="settingsBattleY" type="number"></label><label>Ancho<input id="settingsBattleWidth" type="number" min="1"></label><label>Alto<input id="settingsBattleHeight" type="number" min="1"></label></div>
+                    <p class="muted small">Área donde se buscarán únicamente las imágenes cargadas como objetivos Battle.</p>
+                    <div class="region-tools"><div><strong>Selección visual</strong><p class="muted small">Carga una captura completa del escritorio y marca el área de Battle.</p></div><div class="action-row compact"><button type="button" id="selectBattleRegionBtn" class="secondary">Seleccionar desde imagen</button><button type="button" id="openBattleLibraryBtn" class="secondary">Administrar imágenes Battle</button></div></div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Bestiary Tracker</legend>
+                    <div class="grid cols-4"><label>X<input id="settingsBestiaryX" type="number"></label><label>Y<input id="settingsBestiaryY" type="number"></label><label>Ancho<input id="settingsBestiaryWidth" type="number" min="1"></label><label>Alto<input id="settingsBestiaryHeight" type="number" min="1"></label></div>
+                    <p class="muted small">Incluye el panel completo: nombres de criaturas y sus números. Battle guarda el snapshot OCR inicial y espera que cambie el número del objetivo.</p>
+                    <div class="region-tools"><div><strong>Selección visual con zoom</strong><p class="muted small">Carga una captura completa y usa + / − para acercar antes de marcar el Bestiary Tracker.</p></div><button type="button" id="selectBestiaryRegionBtn" class="secondary">Seleccionar Bestiary</button></div>
+                </fieldset>
+
+                <div class="grid cols-3"><label>Similitud mapa<input id="settingsThreshold" type="number" min="0" max="1" step="0.01"></label><label>Timeout validación (s)<input id="settingsTimeout" type="number" min="0.5" step="0.5"></label><label>Intervalo validación (s)<input id="settingsPoll" type="number" min="0.05" step="0.05"></label></div>
+                <div class="grid cols-4"><label>Similitud Battle<input id="settingsBattleThreshold" type="number" min="0" max="1" step="0.01"></label><label>Intervalo Battle (s)<input id="settingsBattlePoll" type="number" min="0.1" step="0.1"></label><label>Precisión escaneo Battle<input id="settingsBattleScanStep" type="number" min="1" step="1"></label><label>Timeout acción Battle (s)<input id="settingsBattleActionTimeout" type="number" min="1" step="1"></label></div>
+                <div class="grid cols-3"><label>Espera entre pasos (s)<input id="settingsStepDelay" type="number" min="0" step="0.1"></label><label>Timeout captura NVIDIA (s)<input id="settingsNvidiaTimeout" type="number" min="1" step="0.5"></label><label>Título ventana<input id="settingsWindowTitle"></label></div>
+                <div class="hotkey-grid"><div><span>Grabar coordenada</span><kbd>F12</kbd></div><div><span>Capturar validación</span><kbd>F11</kbd></div></div>
+                <button type="submit" class="primary">Guardar configuración</button>
+            </form>
+            <p id="settingsStatus" class="status"></p>
+        </article>
+    </section>
+    <footer>Log de sesión: {{ log_path }}</footer>
+</div>
+
+<input id="regionImageInput" type="file" accept="image/*" class="hidden">
+<div id="regionSelectorModal" class="region-modal hidden" role="dialog" aria-modal="true">
+    <div class="region-modal-card">
+        <div class="panel-title-row">
+            <div><span class="badge">SELECTOR</span><h2 id="regionSelectorTitle">Seleccionar región</h2><p class="muted small">Arrastra desde una esquina hasta la esquina opuesta. Las coordenadas se calculan sobre la resolución original aunque uses zoom.</p></div>
+            <button type="button" id="closeRegionSelectorBtn" class="secondary">Cerrar</button>
+        </div>
+        <div class="action-row compact" style="margin-bottom:12px">
+            <strong>Zoom</strong>
+            <button type="button" id="regionZoomOutBtn" class="secondary">−</button>
+            <span id="regionZoomLabel" class="badge subtle">100%</span>
+            <button type="button" id="regionZoomInBtn" class="secondary">+</button>
+            <button type="button" id="regionZoomResetBtn" class="secondary">Ajustar</button>
+            <span class="muted small">También puedes usar Ctrl + rueda del mouse.</span>
+        </div>
+        <div class="region-canvas-wrap" id="regionCanvasWrap"><canvas id="regionCanvas"></canvas></div>
+        <div class="region-selection-footer">
+            <span id="regionSelectionText" class="muted">Sin selección</span>
+            <div class="action-row compact"><button type="button" id="clearRegionSelectionBtn" class="secondary">Limpiar</button><button type="button" id="applyRegionSelectionBtn" class="primary" disabled>Usar este recuadro</button></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let routines={{ routines|tojson }}; let events={{ events|tojson }}; let settings={{ settings|tojson }}; let selectedRoutine=null; let recordingActive={{ 'true' if recording.active else 'false' }}; let recordingRoutineId={{ (recording.routine_id|tojson) if recording.routine_id else 'null' }};
+const byId=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c])); const chainArray=v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean); const toast=(id,text)=>byId(id).textContent=text||'';
+function renderRoutines(){byId('routineNames').innerHTML=routines.map(r=>`<option value="${esc(r.name)}"></option>`).join('');byId('routineCards').innerHTML=routines.map(r=>`<article class="library-card"><div class="card-main"><div class="card-icon">R</div><div><h3>${esc(r.name)}</h3><p>v${esc(r.version)} · ${r.step_count??0} pasos · ${r.checkpoint_count??0} imágenes</p></div></div><button class="secondary edit-routine-btn" data-id="${esc(r.id)}">Editar</button></article>`).join('')||'<p class="empty">Todavía no hay rutinas.</p>'}
+function checkpointUrl(i){return `/api/routines/${selectedRoutine.id}/steps/${i}/checkpoint?t=${Date.now()}`}
+function renderSteps(){const steps=selectedRoutine?.steps||[];byId('checkpointSummary').textContent=`${steps.filter(s=>s.validation_image).length}/${steps.length} con imagen`;byId('insertIndex').value=steps.length;byId('stepsList').innerHTML=steps.map((s,i)=>`<article class="step-card" data-index="${i}"><div class="step-number">${i+1}</div><div class="step-fields"><label>X<input class="step-x" type="number" value="${s.x}"></label><label>Y<input class="step-y" type="number" value="${s.y}"></label></div><div class="checkpoint-box">${s.validation_image?`<img class="checkpoint-thumb" src="${checkpointUrl(i)}">`:'<div class="checkpoint-empty">Sin imagen</div>'}<div class="checkpoint-actions"><button class="secondary capture-checkpoint-btn" data-index="${i}">Capturar en 3s</button><label class="file-button">Subir imagen<input class="checkpoint-file" data-index="${i}" type="file" accept="image/*"></label>${s.validation_image?`<button class="secondary compare-checkpoint-btn" data-index="${i}">Comparar ahora</button>`:''}</div><span class="small muted compare-result" id="compareResult${i}"></span></div><button class="danger delete-step-btn" data-index="${i}">Eliminar</button></article>`).join('')||'<div class="empty">Sin pasos.</div>'}
+function showRoutineEditor(r){selectedRoutine=r;byId('editName').value=r.name||'';byId('editVersion').value=r.version||'';byId('editorTitle').textContent=r.name||'Rutina';byId('editorSubtitle').textContent=`ID ${r.id} · versión ${r.version}`;byId('editorPanel').classList.remove('hidden');renderSteps();updateRecordingUi();byId('editorPanel').scrollIntoView({behavior:'smooth'})}
+function renderEvents(){byId('eventCards').innerHTML=events.map(e=>`<article class="library-card"><div class="card-main"><div class="card-icon event">E</div><div><h3>${esc(e.name)}</h3><p>${esc(e.category)} · ${e.region?.width}×${e.region?.height} en (${e.region?.x}, ${e.region?.y})</p></div></div><button class="secondary edit-event-btn" data-id="${esc(e.id)}">Editar</button></article>`).join('')||'<p class="empty">Sin eventos configurados.</p>'}
+function renderSettings(){const m=settings.map_validation_region||{},b=settings.battle_event_region||{},bt=settings.bestiary_tracker_region||{};byId('settingsMapX').value=m.x??0;byId('settingsMapY').value=m.y??0;byId('settingsMapWidth').value=m.width??1;byId('settingsMapHeight').value=m.height??1;byId('settingsBattleX').value=b.x??0;byId('settingsBattleY').value=b.y??0;byId('settingsBattleWidth').value=b.width??1;byId('settingsBattleHeight').value=b.height??1;byId('settingsBestiaryX').value=bt.x??0;byId('settingsBestiaryY').value=bt.y??0;byId('settingsBestiaryWidth').value=bt.width??1;byId('settingsBestiaryHeight').value=bt.height??1;byId('settingsThreshold').value=settings.validation_similarity_threshold??.9;byId('settingsTimeout').value=settings.validation_timeout_seconds??5;byId('settingsPoll').value=settings.validation_poll_seconds??.5;byId('settingsBattleThreshold').value=settings.battle_similarity_threshold??.9;byId('settingsBattlePoll').value=settings.battle_poll_seconds??1;byId('settingsBattleScanStep').value=settings.battle_scan_step??2;byId('settingsBattleActionTimeout').value=settings.battle_action_timeout_seconds??20;byId('settingsStepDelay').value=settings.step_delay_seconds??2;byId('settingsNvidiaTimeout').value=settings.nvidia_capture_timeout_seconds??8;byId('settingsWindowTitle').value=settings.tibia_window_title??'Tibia'}
+function updateRecordingUi(s=null){if(s){recordingActive=!!s.active;recordingRoutineId=s.routine_id||null}byId('recordingState').textContent=recordingActive?`Grabando ${recordingRoutineId}`:'Grabación detenida';byId('recordingDot').classList.toggle('active',recordingActive);byId('startRecordingBtn').disabled=recordingActive;byId('stopRecordingBtn').disabled=!recordingActive;byId('recordingEditorState').textContent=recordingActive?'Grabación activa · F12 coordenada · F11 validación.':'Grabación detenida.'}
+async function refreshAll(){const d=await fetch('/api/status').then(r=>r.json());routines=d.routines||[];events=d.events||[];settings=d.settings||settings;renderRoutines();renderEvents();renderSettings();updateRecordingUi(d.recording)}
+async function refreshSelectedRoutine(){if(!selectedRoutine)return;const d=await fetch(`/api/routines/${selectedRoutine.id}`).then(r=>r.json());if(d.ok)showRoutineEditor(d.routine)}
+byId('startRoutineBtn').onclick=async()=>{const b=byId('startRoutineBtn');b.disabled=true;toast('runStatus','Pon Tibia en primer plano y presiona F12…');try{const d=await fetch('/api/routines/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('routineNameInput').value.trim()})}).then(r=>r.json());toast('runStatus',d.message||d.error)}finally{b.disabled=false}}
+byId('createRoutineForm').onsubmit=async e=>{e.preventDefault();const d=await fetch('/api/routines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('newRoutineName').value.trim(),version:byId('newRoutineVersion').value.trim()})}).then(r=>r.json());toast('createStatus',d.ok?'Rutina creada.':d.error);if(d.ok){routines=d.routines||[];renderRoutines();showRoutineEditor(d.routine)}}
+byId('saveRoutineBtn').onclick=async()=>{if(!selectedRoutine)return;const steps=[...byId('stepsList').querySelectorAll('.step-card')].map((c,i)=>({x:Number(c.querySelector('.step-x').value),y:Number(c.querySelector('.step-y').value),validation_image:selectedRoutine.steps?.[i]?.validation_image||null}));const d=await fetch(`/api/routines/${selectedRoutine.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('editName').value,version:byId('editVersion').value,steps})}).then(r=>r.json());toast('editorStatus',d.ok?'Cambios guardados.':d.error);if(d.ok){selectedRoutine=d.routine;routines=d.routines||routines;renderRoutines();renderSteps()}}
+byId('insertStepBtn').onclick=async()=>{if(!selectedRoutine)return;const d=await fetch(`/api/routines/${selectedRoutine.id}/steps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:Number(byId('insertIndex').value),x:Number(byId('insertX').value),y:Number(byId('insertY').value)})}).then(r=>r.json());if(d.ok){selectedRoutine=d.routine;renderSteps()}}
+byId('startRecordingBtn').onclick=async()=>{if(!selectedRoutine)return;const d=await fetch('/api/recording/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({routine_id:selectedRoutine.id})}).then(r=>r.json());if(d.ok)updateRecordingUi(d.recording);else toast('recordingEditorState',d.error)}
+byId('stopRecordingBtn').onclick=async()=>{const d=await fetch('/api/recording/stop',{method:'POST'}).then(r=>r.json());if(d.ok){updateRecordingUi(d.recording);if(d.routine)showRoutineEditor(d.routine)}}
+byId('settingsForm').onsubmit=async e=>{e.preventDefault();const payload={map_validation_region:{x:Number(byId('settingsMapX').value),y:Number(byId('settingsMapY').value),width:Number(byId('settingsMapWidth').value),height:Number(byId('settingsMapHeight').value)},battle_event_region:{x:Number(byId('settingsBattleX').value),y:Number(byId('settingsBattleY').value),width:Number(byId('settingsBattleWidth').value),height:Number(byId('settingsBattleHeight').value)},bestiary_tracker_region:{x:Number(byId('settingsBestiaryX').value),y:Number(byId('settingsBestiaryY').value),width:Number(byId('settingsBestiaryWidth').value),height:Number(byId('settingsBestiaryHeight').value)},validation_similarity_threshold:Number(byId('settingsThreshold').value),validation_timeout_seconds:Number(byId('settingsTimeout').value),validation_poll_seconds:Number(byId('settingsPoll').value),battle_similarity_threshold:Number(byId('settingsBattleThreshold').value),battle_poll_seconds:Number(byId('settingsBattlePoll').value),battle_scan_step:Number(byId('settingsBattleScanStep').value),battle_action_timeout_seconds:Number(byId('settingsBattleActionTimeout').value),step_delay_seconds:Number(byId('settingsStepDelay').value),nvidia_capture_timeout_seconds:Number(byId('settingsNvidiaTimeout').value),tibia_window_title:byId('settingsWindowTitle').value.trim()};const d=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());toast('settingsStatus',d.ok?'Configuración guardada.':d.error);if(d.ok){settings=d.settings;renderSettings()}}
+byId('openBattleLibraryBtn').onclick=()=>window.location.href='/battle';
+byId('eventForm').onsubmit=async e=>{e.preventDefault();const p={name:byId('eventName').value.trim(),category:byId('eventCategory').value,region:{x:Number(byId('eventX').value),y:Number(byId('eventY').value),width:Number(byId('eventWidth').value),height:Number(byId('eventHeight').value)},action_code:byId('eventActionCode').value,chain:chainArray(byId('eventChain').value)};const d=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json());toast('eventStatus',d.ok?'Evento creado.':d.error);if(d.ok){events=d.events||[];renderEvents();e.target.reset()}}
+function showEventEditor(e){byId('editEventId').value=e.id;byId('editEventName').value=e.name||'';byId('editEventCategory').value=e.category||'custom';byId('editEventX').value=e.region?.x??0;byId('editEventY').value=e.region?.y??0;byId('editEventWidth').value=e.region?.width??1;byId('editEventHeight').value=e.region?.height??1;byId('editEventActionCode').value=e.action_code||'';byId('editEventChain').value=(e.chain||[]).join(',');byId('eventEditorPanel').classList.remove('hidden')}
+byId('saveEventBtn').onclick=async()=>{const id=byId('editEventId').value;if(!id)return;const p={name:byId('editEventName').value,category:byId('editEventCategory').value,region:{x:Number(byId('editEventX').value),y:Number(byId('editEventY').value),width:Number(byId('editEventWidth').value),height:Number(byId('editEventHeight').value)},action_code:byId('editEventActionCode').value,chain:chainArray(byId('editEventChain').value)};const d=await fetch(`/api/events/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json());toast('eventEditorStatus',d.ok?'Evento guardado.':d.error);if(d.ok){events=d.events||[];renderEvents()}}
+byId('deleteEventBtn').onclick=async()=>{const id=byId('editEventId').value;if(!id)return;const d=await fetch(`/api/events/${id}`,{method:'DELETE'}).then(r=>r.json());if(d.ok){events=d.events||[];renderEvents();byId('eventEditorPanel').classList.add('hidden')}}
+document.addEventListener('click',async e=>{if(e.target.matches('.tab')){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-section').forEach(x=>x.classList.remove('active'));e.target.classList.add('active');byId(e.target.dataset.target).classList.add('active')}if(e.target.matches('.edit-routine-btn')){const d=await fetch(`/api/routines/${e.target.dataset.id}`).then(r=>r.json());if(d.ok)showRoutineEditor(d.routine)}if(e.target.matches('.delete-step-btn')&&selectedRoutine){const d=await fetch(`/api/routines/${selectedRoutine.id}/steps/${e.target.dataset.index}`,{method:'DELETE'}).then(r=>r.json());if(d.ok){selectedRoutine=d.routine;renderSteps()}}if(e.target.matches('.capture-checkpoint-btn')&&selectedRoutine){const i=Number(e.target.dataset.index);e.target.disabled=true;e.target.textContent='Cambia a Tibia…';const d=await fetch(`/api/routines/${selectedRoutine.id}/steps/${i}/checkpoint/capture`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delay_seconds:3})}).then(r=>r.json());e.target.disabled=false;e.target.textContent='Capturar en 3s';if(d.ok){selectedRoutine=d.routine;renderSteps()}}if(e.target.matches('.compare-checkpoint-btn')&&selectedRoutine){const i=Number(e.target.dataset.index),d=await fetch(`/api/routines/${selectedRoutine.id}/steps/${i}/checkpoint/compare`,{method:'POST'}).then(r=>r.json());byId(`compareResult${i}`).textContent=d.ok?`Similitud ${(d.similarity*100).toFixed(1)}% · ${d.match?'coincide':'no coincide'}`:(d.reason||d.error)}if(e.target.matches('.edit-event-btn')){const d=await fetch(`/api/events/${e.target.dataset.id}`).then(r=>r.json());if(d.ok)showEventEditor(d.event)}})
+document.addEventListener('change',async e=>{if(e.target.matches('.checkpoint-file')&&selectedRoutine&&e.target.files?.[0]){const i=Number(e.target.dataset.index),f=new FormData();f.append('image',e.target.files[0]);const d=await fetch(`/api/routines/${selectedRoutine.id}/steps/${i}/checkpoint/upload`,{method:'POST',body:f}).then(r=>r.json());if(d.ok){selectedRoutine=d.routine;renderSteps()}}})
+byId('closeEditorBtn').onclick=()=>byId('editorPanel').classList.add('hidden');byId('closeEventEditorBtn').onclick=()=>byId('eventEditorPanel').classList.add('hidden');byId('refreshBtn').onclick=refreshAll;
+setInterval(async()=>{if(!recordingActive)return;const d=await fetch('/api/status').then(r=>r.json());updateRecordingUi(d.recording);if(selectedRoutine&&d.recording?.routine_id===selectedRoutine.id)await refreshSelectedRoutine()},1000);
+
+let regionTarget=null,regionImage=null,regionStart=null,regionSelection=null,regionDragging=false,regionZoom=1;
+const regionCanvas=byId('regionCanvas'),regionCtx=regionCanvas.getContext('2d'),regionCanvasWrap=byId('regionCanvasWrap');
+function requestRegionSelection(target){regionTarget=target;byId('regionImageInput').value='';byId('regionImageInput').click()}
+function canvasPoint(evt){const r=regionCanvas.getBoundingClientRect();return{x:Math.max(0,Math.min(regionCanvas.width,Math.round((evt.clientX-r.left)*(regionCanvas.width/r.width)))),y:Math.max(0,Math.min(regionCanvas.height,Math.round((evt.clientY-r.top)*(regionCanvas.height/r.height))))}}
+function normalizeSelection(a,b){const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y);return{x,y,width:Math.max(1,Math.abs(b.x-a.x)),height:Math.max(1,Math.abs(b.y-a.y))}}
+function applyRegionZoom(value){regionZoom=Math.max(.2,Math.min(4,Number(value)||1));regionCanvas.style.maxWidth='none';regionCanvas.style.width=`${Math.round(regionCanvas.width*regionZoom)}px`;regionCanvas.style.height=`${Math.round(regionCanvas.height*regionZoom)}px`;byId('regionZoomLabel').textContent=`${Math.round(regionZoom*100)}%`}
+function fitRegionZoom(){if(!regionImage)return;const available=Math.max(200,regionCanvasWrap.clientWidth-24);applyRegionZoom(Math.min(1,available/regionImage.naturalWidth))}
+function drawRegionSelector(){if(!regionImage)return;regionCtx.clearRect(0,0,regionCanvas.width,regionCanvas.height);regionCtx.drawImage(regionImage,0,0);if(regionSelection){regionCtx.save();regionCtx.fillStyle='rgba(14,165,233,.18)';regionCtx.strokeStyle='#38bdf8';regionCtx.lineWidth=Math.max(2,regionCanvas.width/900);regionCtx.fillRect(regionSelection.x,regionSelection.y,regionSelection.width,regionSelection.height);regionCtx.strokeRect(regionSelection.x,regionSelection.y,regionSelection.width,regionSelection.height);regionCtx.restore();byId('regionSelectionText').textContent=`x=${regionSelection.x}, y=${regionSelection.y}, ancho=${regionSelection.width}, alto=${regionSelection.height}`;byId('applyRegionSelectionBtn').disabled=false}else{byId('regionSelectionText').textContent='Arrastra sobre la imagen para seleccionar un recuadro.';byId('applyRegionSelectionBtn').disabled=true}}
+byId('selectMapRegionBtn').onclick=()=>requestRegionSelection('map');byId('selectBattleRegionBtn').onclick=()=>requestRegionSelection('battle');byId('selectBestiaryRegionBtn').onclick=()=>requestRegionSelection('bestiary');
+byId('regionImageInput').onchange=e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{const img=new Image();img.onload=()=>{regionImage=img;regionCanvas.width=img.naturalWidth;regionCanvas.height=img.naturalHeight;regionSelection=null;const titles={map:'Seleccionar mapa de validación',battle:'Seleccionar región Battle',bestiary:'Seleccionar Bestiary Tracker'};byId('regionSelectorTitle').textContent=titles[regionTarget]||'Seleccionar región';byId('regionSelectorModal').classList.remove('hidden');requestAnimationFrame(()=>{fitRegionZoom();drawRegionSelector()})};img.src=reader.result};reader.readAsDataURL(file)};
+byId('regionZoomOutBtn').onclick=()=>applyRegionZoom(regionZoom-.25);byId('regionZoomInBtn').onclick=()=>applyRegionZoom(regionZoom+.25);byId('regionZoomResetBtn').onclick=fitRegionZoom;
+regionCanvasWrap.addEventListener('wheel',e=>{if(!e.ctrlKey||!regionImage)return;e.preventDefault();applyRegionZoom(regionZoom+(e.deltaY<0?.15:-.15))},{passive:false});
+regionCanvas.addEventListener('pointerdown',e=>{if(!regionImage)return;regionDragging=true;regionStart=canvasPoint(e);regionSelection={x:regionStart.x,y:regionStart.y,width:1,height:1};regionCanvas.setPointerCapture?.(e.pointerId);drawRegionSelector()});
+regionCanvas.addEventListener('pointermove',e=>{if(!regionDragging||!regionStart)return;regionSelection=normalizeSelection(regionStart,canvasPoint(e));drawRegionSelector()});
+regionCanvas.addEventListener('pointerup',e=>{if(!regionDragging)return;regionDragging=false;regionSelection=normalizeSelection(regionStart,canvasPoint(e));drawRegionSelector()});
+function closeRegionSelector(){byId('regionSelectorModal').classList.add('hidden');regionDragging=false;regionStart=null}
+byId('closeRegionSelectorBtn').onclick=closeRegionSelector;byId('clearRegionSelectionBtn').onclick=()=>{regionSelection=null;drawRegionSelector()};
+byId('applyRegionSelectionBtn').onclick=()=>{if(!regionSelection||!regionTarget)return;const prefixes={map:'settingsMap',battle:'settingsBattle',bestiary:'settingsBestiary'},labels={map:'Mapa',battle:'Battle',bestiary:'Bestiary Tracker'};const prefix=prefixes[regionTarget];byId(prefix+'X').value=regionSelection.x;byId(prefix+'Y').value=regionSelection.y;byId(prefix+'Width').value=regionSelection.width;byId(prefix+'Height').value=regionSelection.height;toast('settingsStatus',`${labels[regionTarget]} actualizado desde imagen: x=${regionSelection.x}, y=${regionSelection.y}, ${regionSelection.width}×${regionSelection.height}. Presiona Guardar configuración.`);closeRegionSelector()};
+byId('regionSelectorModal').addEventListener('click',e=>{if(e.target===byId('regionSelectorModal'))closeRegionSelector()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!byId('regionSelectorModal').classList.contains('hidden'))closeRegionSelector()});
+
+renderRoutines();renderEvents();renderSettings();updateRecordingUi();
+</script>
+<script src="{{ url_for('static', filename='events_ui.js') }}"></script>
+<script src="{{ url_for('static', filename='execution_ui.js') }}"></script>
+</body>
+</html>

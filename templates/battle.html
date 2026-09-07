@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tibia Mapper - Battle</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<main class="container">
+  <section class="hero">
+    <div>
+      <h1>Battle detector</h1>
+      <p>Configura la región visual donde se buscan los objetivos y sus referencias.</p>
+    </div>
+    <a class="button-link secondary" href="/">Volver</a>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <div>
+        <h2>Región de eventos Battle</h2>
+        <p class="muted">Aquí se comparan las referencias visuales de los objetivos. El fin del ciclo se controla con Bestiary.</p>
+      </div>
+      <button type="button" id="pickBattleRegionBtn" class="secondary">Seleccionar desde imagen</button>
+    </div>
+    <div class="grid">
+      <label>X<input id="battleX" type="number"></label>
+      <label>Y<input id="battleY" type="number"></label>
+      <label>Ancho<input id="battleWidth" type="number" min="1"></label>
+      <label>Alto<input id="battleHeight" type="number" min="1"></label>
+      <label>Similitud mínima<input id="battleThreshold" type="number" min="0" max="1" step="0.01"></label>
+      <label>Scan step<input id="battleScanStep" type="number" min="1"></label>
+    </div>
+    <div class="info-box">
+      Flujo actual: referencia detectada → se registra el objetivo → Bestiary sigue su contador → cuando cambia, el ciclo Battle se libera.
+    </div>
+    <button id="saveSettingsBtn">Guardar configuración Battle</button>
+    <p id="settingsStatus" class="status"></p>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <div>
+        <h2>Referencias detectables</h2>
+        <p class="muted">La referencia se captura directamente desde DXGI usando la Región Battle configurada.</p>
+      </div>
+    </div>
+
+    <form id="uploadForm" class="stack">
+      <div class="grid cols-2">
+        <label>Nombre<input id="targetName" required placeholder="Ej: swamp troll"></label>
+        <label>Prioridad<input id="targetPriority" type="number" min="1" value="100"></label>
+      </div>
+
+      <div class="info-box">
+        Al capturar, el backend toma el frame DXGI actual y recorta exactamente
+        <strong>battle_event_region</strong>. No necesitas subir screenshots ni calcular offsets de monitores.
+      </div>
+
+      <button type="submit" id="captureReferenceBtn">Capturar referencia desde DXGI</button>
+    </form>
+
+    <p id="uploadStatus" class="status"></p>
+    <div id="targetCards" class="routine-grid"></div>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <div>
+        <h2>Prueba de detección</h2>
+        <p class="muted">Presiona Analizar ahora, cambia a Tibia y pulsa F10.</p>
+      </div>
+      <button id="scanBtn">Analizar ahora</button>
+    </div>
+    <p id="scanStatus" class="status"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Estado</th><th>Objetivo</th><th>Prioridad</th><th>Similitud</th><th>Posición</th></tr></thead>
+        <tbody id="scanBody"><tr><td colspan="5" class="muted">Sin análisis todavía.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<input id="regionImageInput" type="file" accept="image/*" class="hidden">
+<div id="regionSelectorModal" class="region-modal hidden" role="dialog" aria-modal="true">
+  <div class="region-modal-card">
+    <div class="panel-title-row">
+      <div>
+        <span class="badge">SELECTOR</span>
+        <h2 id="regionSelectorTitle">Seleccionar Región Battle</h2>
+        <p class="muted small">Arrastra el recuadro sobre una captura del monitor DXGI.</p>
+      </div>
+      <button type="button" id="closeRegionSelectorBtn" class="secondary">Cerrar</button>
+    </div>
+    <div class="region-canvas-wrap"><canvas id="regionCanvas"></canvas></div>
+    <div class="region-selection-footer">
+      <span id="regionSelectionText" class="muted">Sin selección</span>
+      <button type="button" id="applyRegionSelectionBtn" class="primary" disabled>Usar este recuadro</button>
+    </div>
+  </div>
+</div>
+
+<div id="cropModal" class="region-modal hidden" role="dialog" aria-modal="true">
+  <div class="region-modal-card">
+    <div class="panel-title-row">
+      <div>
+        <span class="badge">RECORTE</span>
+        <h2 id="cropTitle">Editar referencia</h2>
+        <p class="muted small">Este editor modifica la imagen usada para detectar el objetivo.</p>
+      </div>
+      <button type="button" id="closeCropBtn" class="secondary">Cerrar</button>
+    </div>
+    <div class="region-canvas-wrap"><canvas id="cropCanvas"></canvas></div>
+    <div class="region-selection-footer">
+      <span id="cropSelectionText" class="muted">Sin selección</span>
+      <button type="button" id="applyCropBtn" class="primary" disabled>Reemplazar con recorte</button>
+    </div>
+    <p id="cropStatus" class="status"></p>
+  </div>
+</div>
+
+<script>
+  let settings = {{ settings|tojson }};
+  let targets = {{ battle_targets|tojson }};
+
+  const byId = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+  function loadSettings() {
+    const r = settings.battle_event_region || {};
+    byId('battleX').value = r.x ?? 0;
+    byId('battleY').value = r.y ?? 0;
+    byId('battleWidth').value = r.width ?? 1;
+    byId('battleHeight').value = r.height ?? 1;
+    byId('battleThreshold').value = settings.battle_similarity_threshold ?? 0.90;
+    byId('battleScanStep').value = settings.battle_scan_step ?? 2;
+  }
+
+  function currentBattleRegion() {
+    return {
+      x: Number(byId('battleX').value),
+      y: Number(byId('battleY').value),
+      width: Number(byId('battleWidth').value),
+      height: Number(byId('battleHeight').value)
+    };
+  }
+
+  function renderTargets() {
+    byId('targetCards').innerHTML = targets.map(t => `
+      <article class="routine-card">
+        <div class="grow">
+          <h3>${esc(t.name)}</h3>
+          <p>prioridad ${t.priority} · ${t.enabled ? 'activa' : 'desactivada'} · referencia ${t.image_width || '?'}×${t.image_height || '?'} · fuente ${esc(t.reference_source || t.capture_source || 'legacy')}</p>
+          <div class="action-row compact">
+            <div>
+              <div class="muted small">Referencia Battle</div>
+              <img src="/api/battle/targets/${encodeURIComponent(t.id)}/image?t=${Date.now()}" style="max-width:260px;max-height:100px;border-radius:6px">
+            </div>
+          </div>
+        </div>
+        <div class="action-row">
+          <button type="button" class="secondary crop-target" data-id="${esc(t.id)}">Editar referencia</button>
+          <button type="button" class="danger delete-target" data-id="${esc(t.id)}">Eliminar</button>
+        </div>
+      </article>`).join('') || '<p class="muted">Sin referencias cargadas.</p>';
+  }
+
+  byId('saveSettingsBtn').onclick = async () => {
+    const payload = {
+      battle_event_region: currentBattleRegion(),
+      battle_similarity_threshold: Number(byId('battleThreshold').value),
+      battle_scan_step: Number(byId('battleScanStep').value)
+    };
+    const data = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    }).then(r => r.json());
+    byId('settingsStatus').textContent = data.ok ? 'Configuración Battle guardada.' : data.error;
+    if (data.ok) settings = data.settings;
+  };
+
+  byId('uploadForm').onsubmit = async e => {
+    e.preventDefault();
+    const name = byId('targetName').value.trim();
+    if (!name) {
+      byId('uploadStatus').textContent = 'Debes indicar el nombre del objetivo.';
+      return;
+    }
+
+    const btn = byId('captureReferenceBtn');
+    btn.disabled = true;
+    btn.textContent = 'Capturando DXGI…';
+    byId('uploadStatus').textContent = 'Tomando frame DXGI y recortando la Región Battle…';
+
+    try {
+      const form = new FormData();
+      form.append('name', name);
+      form.append('priority', byId('targetPriority').value);
+
+      const data = await fetch('/api/battle/targets', {method:'POST', body:form}).then(r => r.json());
+      byId('uploadStatus').textContent = data.ok
+        ? `Referencia DXGI guardada: ${data.target?.image_width || '?'}×${data.target?.image_height || '?'}.`
+        : data.error;
+      if (data.ok) {
+        targets = data.targets || [];
+        renderTargets();
+        e.target.reset();
+        byId('targetPriority').value = 100;
+      }
+    } catch (err) {
+      byId('uploadStatus').textContent = `Error: ${err.message || err}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Capturar referencia desde DXGI';
+    }
+  };
+
+  // Selector visual de la región Battle.
+  let regionImage = null;
+  let regionStart = null;
+  let regionSelection = null;
+  let regionDragging = false;
+  const regionCanvas = byId('regionCanvas');
+  const regionCtx = regionCanvas.getContext('2d');
+
+  byId('pickBattleRegionBtn').onclick = () => {
+    byId('regionImageInput').value = '';
+    byId('regionImageInput').click();
+  };
+
+  byId('regionImageInput').onchange = e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        regionImage = img;
+        regionCanvas.width = img.naturalWidth;
+        regionCanvas.height = img.naturalHeight;
+        regionSelection = null;
+        byId('regionSelectorModal').classList.remove('hidden');
+        drawRegion();
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  function rp(ev) {
+    const r = regionCanvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(regionCanvas.width, Math.round((ev.clientX-r.left)*regionCanvas.width/r.width))),
+      y: Math.max(0, Math.min(regionCanvas.height, Math.round((ev.clientY-r.top)*regionCanvas.height/r.height)))
+    };
+  }
+
+  function normalized(a, b) {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    return {x, y, width:Math.max(1, Math.abs(a.x-b.x)), height:Math.max(1, Math.abs(a.y-b.y))};
+  }
+
+  function drawRegion() {
+    if (!regionImage) return;
+    regionCtx.clearRect(0, 0, regionCanvas.width, regionCanvas.height);
+    regionCtx.drawImage(regionImage, 0, 0);
+    if (regionSelection) {
+      regionCtx.save();
+      regionCtx.fillStyle = 'rgba(56,189,248,.18)';
+      regionCtx.strokeStyle = '#38bdf8';
+      regionCtx.lineWidth = 2;
+      regionCtx.fillRect(regionSelection.x, regionSelection.y, regionSelection.width, regionSelection.height);
+      regionCtx.strokeRect(regionSelection.x, regionSelection.y, regionSelection.width, regionSelection.height);
+      regionCtx.restore();
+      byId('regionSelectionText').textContent = `x=${regionSelection.x}, y=${regionSelection.y}, ${regionSelection.width}×${regionSelection.height}`;
+      byId('applyRegionSelectionBtn').disabled = false;
+    } else {
+      byId('regionSelectionText').textContent = 'Sin selección';
+      byId('applyRegionSelectionBtn').disabled = true;
+    }
+  }
+
+  regionCanvas.onpointerdown = e => {
+    regionDragging = true;
+    regionStart = rp(e);
+    regionSelection = {...regionStart, width:1, height:1};
+    drawRegion();
+  };
+  regionCanvas.onpointermove = e => {
+    if (!regionDragging) return;
+    regionSelection = normalized(regionStart, rp(e));
+    drawRegion();
+  };
+  regionCanvas.onpointerup = e => {
+    regionDragging = false;
+    regionSelection = normalized(regionStart, rp(e));
+    drawRegion();
+  };
+
+  function closeRegion() {
+    byId('regionSelectorModal').classList.add('hidden');
+  }
+
+  byId('closeRegionSelectorBtn').onclick = closeRegion;
+  byId('applyRegionSelectionBtn').onclick = () => {
+    if (!regionSelection) return;
+    byId('battleX').value = regionSelection.x;
+    byId('battleY').value = regionSelection.y;
+    byId('battleWidth').value = regionSelection.width;
+    byId('battleHeight').value = regionSelection.height;
+    closeRegion();
+    byId('settingsStatus').textContent = 'Región actualizada visualmente. Presiona Guardar configuración Battle.';
+  };
+
+  // Editor de la referencia existente.
+  let cropTargetId = null;
+  let cropImage = null;
+  let cropStart = null;
+  let cropSelection = null;
+  let cropDragging = false;
+  const cropCanvas = byId('cropCanvas');
+  const cropCtx = cropCanvas.getContext('2d');
+
+  function cp(ev) {
+    const r = cropCanvas.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(cropCanvas.width, Math.round((ev.clientX-r.left)*cropCanvas.width/r.width))),
+      y: Math.max(0, Math.min(cropCanvas.height, Math.round((ev.clientY-r.top)*cropCanvas.height/r.height)))
+    };
+  }
+
+  function drawCrop() {
+    if (!cropImage) return;
+    cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+    cropCtx.drawImage(cropImage,0,0);
+    if (cropSelection) {
+      cropCtx.save();
+      cropCtx.fillStyle='rgba(56,189,248,.18)';
+      cropCtx.strokeStyle='#38bdf8';
+      cropCtx.lineWidth=2;
+      cropCtx.fillRect(cropSelection.x,cropSelection.y,cropSelection.width,cropSelection.height);
+      cropCtx.strokeRect(cropSelection.x,cropSelection.y,cropSelection.width,cropSelection.height);
+      cropCtx.restore();
+      byId('cropSelectionText').textContent=`x=${cropSelection.x}, y=${cropSelection.y}, ${cropSelection.width}×${cropSelection.height}`;
+      byId('applyCropBtn').disabled=false;
+    } else {
+      byId('cropSelectionText').textContent='Sin selección';
+      byId('applyCropBtn').disabled=true;
+    }
+  }
+
+  function openCrop(id) {
+    cropTargetId=id;
+    cropSelection=null;
+    byId('cropTitle').textContent=`Editar referencia: ${targets.find(t=>String(t.id)===String(id))?.name||id}`;
+    byId('cropModal').classList.remove('hidden');
+    const img=new Image();
+    img.onload=()=>{
+      cropImage=img;
+      cropCanvas.width=img.naturalWidth;
+      cropCanvas.height=img.naturalHeight;
+      drawCrop();
+    };
+    img.src=`/api/battle/targets/${encodeURIComponent(id)}/image?t=${Date.now()}`;
+  }
+
+  cropCanvas.onpointerdown=e=>{cropDragging=true;cropStart=cp(e);cropSelection=null;};
+  cropCanvas.onpointermove=e=>{if(!cropDragging)return;cropSelection=normalized(cropStart,cp(e));drawCrop();};
+  cropCanvas.onpointerup=e=>{cropDragging=false;cropSelection=normalized(cropStart,cp(e));drawCrop();};
+  byId('closeCropBtn').onclick=()=>byId('cropModal').classList.add('hidden');
+  byId('applyCropBtn').onclick=async()=>{
+    if(!cropTargetId||!cropSelection)return;
+    const data=await fetch(`/api/battle/targets/${encodeURIComponent(cropTargetId)}/crop`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(cropSelection)
+    }).then(r=>r.json());
+    if(data.ok){
+      targets=data.targets||targets;
+      renderTargets();
+      byId('cropModal').classList.add('hidden');
+    } else {
+      byId('cropStatus').textContent=data.error;
+    }
+  };
+
+  document.addEventListener('click', async e => {
+    if(e.target.matches('.crop-target')){
+      openCrop(e.target.dataset.id);
+      return;
+    }
+    if(e.target.matches('.delete-target')){
+      const data=await fetch(`/api/battle/targets/${encodeURIComponent(e.target.dataset.id)}`,{method:'DELETE'}).then(r=>r.json());
+      if(data.ok){
+        targets=data.targets||[];
+        renderTargets();
+      }
+    }
+  });
+
+  byId('scanBtn').onclick=async()=>{
+    const btn=byId('scanBtn');
+    btn.disabled=true;
+    btn.textContent='Esperando F10…';
+    byId('scanStatus').textContent='Cambia a Tibia y presiona F10.';
+    try{
+      const data=await fetch('/api/battle/scan',{method:'POST'}).then(r=>r.json());
+      if(!data.ok){
+        byId('scanStatus').textContent=data.error;
+        return;
+      }
+      const s=data.state||{},pending=s.pending_target,rows=[];
+      if(pending) rows.push({...pending,status:s.action_triggered?'gatillo nuevo':s.phase});
+      for(const q of(s.queue||[])) rows.push({...q,status:'bloqueada/cola'});
+      byId('scanBody').innerHTML=rows.map(r=>`<tr><td>${esc(r.status)}</td><td>${esc(r.name)}</td><td>${r.priority}</td><td>${((r.similarity||0)*100).toFixed(1)}%</td><td>${r.screen_x??'-'}, ${r.screen_y??'-'}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No se detectaron referencias.</td></tr>';
+      byId('scanStatus').textContent=`Fase: ${s.phase}${s.released?' · Battle liberado':''}`;
+    }catch(err){
+      byId('scanStatus').textContent=`Error: ${err}`;
+    }finally{
+      btn.disabled=false;
+      btn.textContent='Analizar ahora';
+    }
+  };
+
+  loadSettings();
+  renderTargets();
+</script>
+</body>
+</html>

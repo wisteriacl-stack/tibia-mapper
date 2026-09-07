@@ -1,0 +1,62 @@
+{
+  "dxgi_output_idx": 0,
+  "map_validation_region": {
+    "x": 1701,
+    "y": 67,
+    "width": 169,
+    "height": 25
+  },
+  "battle_event_region": {
+    "x": 466,
+    "y": 60,
+    "width": 420,
+    "height": 480
+  },
+  "battle_reference_region": {
+    "x": 466,
+    "y": 60,
+    "width": 420,
+    "height": 55
+  },
+  "battle_action_region": {
+    "x": 1699,
+    "y": 64,
+    "width": 175,
+    "height": 31
+  },
+  "bestiary_tracker_region": {
+    "x": 60,
+    "y": 52,
+    "width": 380,
+    "height": 160
+  },
+  "loot_tracker_region": {
+    "x": 940,
+    "y": 260,
+    "width": 360,
+    "height": 295
+  },
+  "loot_similarity_threshold": 0.975,
+  "loot_change_confirmations": 1,
+  "health_value_region": {
+    "x": 800,
+    "y": 300,
+    "width": 180,
+    "height": 80
+  },
+  "health_monitor_enabled": true,
+  "health_poll_seconds": 5.0,
+  "health_log_threshold": 60,
+  "validation_similarity_threshold": 0.9,
+  "validation_timeout_seconds": 5.0,
+  "validation_poll_seconds": 0.5,
+  "step_delay_seconds": 2.0,
+  "battle_similarity_threshold": 0.9,
+  "battle_poll_seconds": 1.0,
+  "battle_scan_step": 2,
+  "battle_action_timeout_seconds": 5.0,
+  "nvidia_capture_timeout_seconds": 8.0,
+  "tibia_window_title": "Tibia",
+  "record_step_key": "F12",
+  "record_checkpoint_key": "F11"
+}

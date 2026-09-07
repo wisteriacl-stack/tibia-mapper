@@ -1,0 +1,74 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean tibia-mapper.spec
+
+      - name: Prepare portable folders
+        shell: pwsh
+        run: |
+          $root = 'dist/tibia-mapper'
+          @(
+            'routines',
+            'events',
+            'checkpoints',
+            'battle_targets',
+            'battle_targets/images',
+            'data',
+            'logs'
+          ) | ForEach-Object {
+            New-Item -ItemType Directory -Path (Join-Path $root $_) -Force | Out-Null
+          }
+
+          @"
+          Tibia Mapper - paquete portable Windows x64
+
+          1. Descomprime la carpeta completa en el PC destino.
+          2. Ejecuta tibia-mapper.exe.
+          3. No requiere Python en el PC destino.
+          4. La captura Battle usa NVIDIA Alt+F1 y espera PNGs en Videos\Desktop.
+          5. Los datos se guardan junto al EXE en routines, events, checkpoints, battle_targets, data y logs.
+          "@ | Set-Content -Path (Join-Path $root 'LEEME.txt') -Encoding UTF8
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/tibia-mapper/*' -DestinationPath 'dist/tibia-mapper-windows-x64.zip' -Force
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: tibia-mapper-windows-x64
+          path: dist/tibia-mapper-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
