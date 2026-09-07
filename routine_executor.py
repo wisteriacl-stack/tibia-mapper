@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Any
 
+from checkpoint_store import compare_checkpoint
 from mouse_helpers import execute_step
 from routine_store import get_routine
 from screen_event_monitor import monitor_events, wait_for_tibia_and_f12
@@ -120,6 +121,66 @@ def wait_between_steps(event_busy: threading.Event, seconds: float, control: dic
     return True
 
 
+def validate_step_checkpoint(
+    routine_id: str,
+    record: dict[str, Any],
+    settings: dict[str, Any],
+    control: dict[str, bool],
+) -> dict[str, Any]:
+    """Compara la región de validación contra el checkpoint del paso.
+
+    Reintenta hasta validation_timeout_seconds porque el minimapa tarda en
+    redibujarse tras un movimiento. Respeta pausa/stop por hotkey.
+    """
+    if not record.get("validation_image"):
+        return {"validated": False, "skipped": True, "reason": "sin_checkpoint"}
+
+    region = settings["map_validation_region"]
+    threshold = float(settings["validation_similarity_threshold"])
+    timeout = float(settings["validation_timeout_seconds"])
+    poll = float(settings["validation_poll_seconds"])
+    title = str(settings.get("tibia_window_title") or "Tibia")
+
+    deadline = time.monotonic() + timeout
+    last = {"similarity": 0.0}
+    attempts = 0
+
+    while time.monotonic() < deadline:
+        control["paused"], control["f12_latched"], stop_requested = wait_runtime_control(
+            control["paused"], control["f12_latched"]
+        )
+        if stop_requested:
+            return {"validated": False, "stopped": True, "attempts": attempts}
+
+        attempts += 1
+        try:
+            last = compare_checkpoint(
+                routine_id, record["index"], region, threshold, tibia_title=title,
+            )
+        except Exception as exc:
+            log_event(
+                f"CHECKPOINT ERROR | rutina={routine_id} | paso={record['index'] + 1} | "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return {"validated": False, "error": str(exc), "attempts": attempts}
+
+        if last.get("match"):
+            log_event(
+                f"CHECKPOINT OK | rutina={routine_id} | paso={record['index'] + 1} | "
+                f"similitud={last.get('similarity')} | umbral={threshold} | intentos={attempts}"
+            )
+            return {"validated": True, **last, "attempts": attempts}
+
+        time.sleep(poll)
+
+    log_event(
+        f"CHECKPOINT FALLÓ | rutina={routine_id} | paso={record['index'] + 1} | "
+        f"similitud={last.get('similarity')} | umbral={threshold} | "
+        f"timeout={timeout}s | intentos={attempts}"
+    )
+    return {"validated": False, "timeout": True, **last, "attempts": attempts}
+
+
 def execute_routine(routine_id: str) -> dict[str, Any]:
     execution_settings = get_settings()
     step_delay_seconds = float(execution_settings.get("step_delay_seconds", 2.0))
@@ -197,6 +258,18 @@ def execute_routine(routine_id: str) -> dict[str, Any]:
                     f"x={record['x']} y={record['y']} | checkpoint={record.get('validation_image')}"
                 )
                 result = execute_step(record, record["index"])
+
+                if result.get("ok") and record.get("validation_image"):
+                    validation = validate_step_checkpoint(
+                        routine["id"], record, execution_settings, control
+                    )
+                    result["validation"] = validation
+                    if validation.get("stopped"):
+                        stopped_by_hotkey = True
+                        result["ok"] = False
+                    elif not validation.get("validated"):
+                        result["ok"] = bool(execution_settings.get(
+                            "validation_failure_continues", False))
 
             record["status"] = "done" if result.get("ok") else "error"
             record["result"] = result
