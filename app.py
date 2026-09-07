@@ -44,12 +44,16 @@ from routine_store import (
     update_routine,
 )
 from health_monitor import health_monitor_status, start_health_monitor, stop_health_monitor
-from session_log import get_log_path, log_event
+from log_rotation import purge_old_sessions
+from session_log import LOG_DIR, get_log_path, log_event
 from settings_store import get_settings, update_settings
 
 app = Flask(__name__)
 init_db()
+_purged_sessions = purge_old_sessions(LOG_DIR)
 log_event("Tibia Mapper iniciado")
+if _purged_sessions:
+    log_event(f"LOG CLEANUP | {_purged_sessions} sesion(es) antigua(s) purgada(s) (> 14 dias)")
 if get_settings().get("health_monitor_enabled", True):
     start_health_monitor()
 

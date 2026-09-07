@@ -9,6 +9,7 @@ from typing import Any
 from PIL import Image, ImageEnhance, ImageFilter
 
 from app_paths import RUNTIME_ROOT
+from log_rotation import rotate_if_large
 
 _ENGINE = None
 _ENGINE_ERROR: str | None = None
@@ -367,5 +368,6 @@ def persist_snapshot(snapshot: dict[str, Any], *, target_id: str | None, phase: 
         "snapshot": snapshot,
     }
     SNAPSHOT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    rotate_if_large(SNAPSHOT_LOG)
     with SNAPSHOT_LOG.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False) + "\n")

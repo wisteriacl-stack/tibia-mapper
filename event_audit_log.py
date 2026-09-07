@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from app_paths import RUNTIME_ROOT
+from log_rotation import rotate_if_large
 
 LOG_DIR = RUNTIME_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,6 +38,7 @@ def log_action_event(
         "action": dict(action or {}),
         "details": dict(details or {}),
     }
+    rotate_if_large(EVENT_LOG_PATH)
     with EVENT_LOG_PATH.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
     return record
