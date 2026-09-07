@@ -52,6 +52,20 @@ Read this file **before modifying anything**.
 > earlier in that session for T1/T2/T4 is almost certainly invalid (black compared against
 > black). Before trusting *any* live-Tibia test result on this machine, first confirm a
 > fresh `get_live_frame()` capture actually shows real game content, not black.
+>
+> **RESOLVED, same session:** the root cause was confirmed — Tibia actively blocks
+> conventional screen capture, but the user confirmed OBS's "Game Capture" source *can* see
+> it once the "Use anti-cheat compatibility hook" checkbox is enabled on that source. Added
+> a second capture backend (`settings.capture_backend = "obs_camera"`, see `capture_utils.
+> _get_obs_camera_frame()` and `obs_bridge.py`) that reads OBS's Virtual Camera via
+> `cv2.VideoCapture` instead of DXGI. **This is now the working backend on the user's
+> machine** (`settings.json` has `capture_backend: "obs_camera"`, `obs_camera_index: 1`).
+> Genuinely re-verified afterward with real Tibia content (not black): Battle template
+> matching correctly located and discriminated between two different real Battle List rows.
+> `battle_event_region` / `battle_reference_region` were also recalibrated to the OBS-view
+> coordinates (1920x1080 canvas) — the old DXGI-era coordinates (2560x1440-based) no longer
+> apply while this backend is active. If `capture_backend` is ever switched back to `"dxgi"`,
+> expect the black-screen problem to return unless Tibia's protection has changed.
 
 ## Repository
 
