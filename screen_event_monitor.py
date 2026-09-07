@@ -90,18 +90,23 @@ def wait_for_tibia_foreground(poll_seconds: float = 0.25) -> None:
     log_event("RUTINA: Tibia detectado en primer plano")
 
 
-def wait_for_tibia_and_f12(poll_seconds: float = 0.05) -> None:
+def wait_for_tibia_and_f12(poll_seconds: float = 0.05, cancel_event=None) -> bool:
+    """Espera Tibia en primer plano + F12. Devuelve False si cancel_event se activa antes."""
     log_event("RUTINA: pon Tibia en primer plano y presiona F12 para comenzar")
 
     while _f12_is_down():
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         time.sleep(poll_seconds)
 
     while True:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         if tibia_is_foreground() and _f12_is_down():
             log_event("RUTINA: F12 detectado con Tibia en primer plano")
             while _f12_is_down():
                 time.sleep(poll_seconds)
-            return
+            return True
         time.sleep(poll_seconds)
 
 

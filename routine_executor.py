@@ -81,13 +81,15 @@ def build_execution_records(steps: list[dict[str, Any]]) -> list[dict[str, Any]]
     return records
 
 
-def wait_until_events_finish(event_busy: threading.Event, control: dict[str, bool]) -> bool:
+def wait_until_events_finish(
+    event_busy: threading.Event, control: dict[str, bool], cancel_event: threading.Event | None = None,
+) -> bool:
     logged = False
     while event_busy.is_set():
         control["paused"], control["f12_latched"], stop_requested = wait_runtime_control(
             control["paused"], control["f12_latched"]
         )
-        if stop_requested:
+        if stop_requested or (cancel_event is not None and cancel_event.is_set()):
             return False
         if not logged:
             log_event("RUTINA pausada: esperando que termine el evento activo")
@@ -98,17 +100,19 @@ def wait_until_events_finish(event_busy: threading.Event, control: dict[str, boo
     return True
 
 
-def wait_between_steps(event_busy: threading.Event, seconds: float, control: dict[str, bool]) -> bool:
+def wait_between_steps(
+    event_busy: threading.Event, seconds: float, control: dict[str, bool], cancel_event: threading.Event | None = None,
+) -> bool:
     remaining = float(seconds)
     last_tick = time.monotonic()
     while remaining > 0:
         control["paused"], control["f12_latched"], stop_requested = wait_runtime_control(
             control["paused"], control["f12_latched"]
         )
-        if stop_requested:
+        if stop_requested or (cancel_event is not None and cancel_event.is_set()):
             return False
         if event_busy.is_set():
-            if not wait_until_events_finish(event_busy, control):
+            if not wait_until_events_finish(event_busy, control, cancel_event):
                 return False
             last_tick = time.monotonic()
             continue
@@ -126,6 +130,7 @@ def validate_step_checkpoint(
     record: dict[str, Any],
     settings: dict[str, Any],
     control: dict[str, bool],
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """Compara la región de validación contra el checkpoint del paso.
 
@@ -149,7 +154,7 @@ def validate_step_checkpoint(
         control["paused"], control["f12_latched"], stop_requested = wait_runtime_control(
             control["paused"], control["f12_latched"]
         )
-        if stop_requested:
+        if stop_requested or (cancel_event is not None and cancel_event.is_set()):
             return {"validated": False, "stopped": True, "attempts": attempts}
 
         attempts += 1
@@ -181,7 +186,7 @@ def validate_step_checkpoint(
     return {"validated": False, "timeout": True, **last, "attempts": attempts}
 
 
-def execute_routine(routine_id: str) -> dict[str, Any]:
+def execute_routine(routine_id: str, cancel_event: threading.Event | None = None) -> dict[str, Any]:
     execution_settings = get_settings()
     step_delay_seconds = float(execution_settings.get("step_delay_seconds", 2.0))
 
@@ -192,14 +197,16 @@ def execute_routine(routine_id: str) -> dict[str, Any]:
     detected_enabled = bool(event_config.get("detected_enabled", False))
     enabled_event_ids = [str(x) for x in (event_config.get("enabled_event_ids") or []) if str(x)]
 
-    wait_for_tibia_and_f12()
+    started_ok = wait_for_tibia_and_f12(cancel_event=cancel_event)
     control = {"paused": False, "f12_latched": False}
-    stopped_by_hotkey = False
+    stopped_by_hotkey = not started_ok
 
     monitor_stop = threading.Event()
     event_busy = threading.Event()
     monitor_thread = None
-    if detected_enabled:
+    if not started_ok:
+        log_event(f"EJECUCIÓN RUTINA CANCELADA | id={routine['id']} | antes de iniciar (F12/Tibia)")
+    elif detected_enabled:
         monitor_thread = threading.Thread(
             target=monitor_events,
             kwargs={
@@ -219,22 +226,25 @@ def execute_routine(routine_id: str) -> dict[str, Any]:
     else:
         log_event(f"MONITOR EVENTOS deshabilitado para rutina={routine_id}")
 
-    log_event(
-        f"EJECUCIÓN RUTINA INICIADA | id={routine['id']} | nombre={routine['name']} | "
-        f"version={routine['version']} | pasos={len(records)} | step_delay={step_delay_seconds:.2f}s | "
-        "controles=F12 pausa/reanuda, Ctrl+F12 detiene"
-    )
+    if started_ok:
+        log_event(
+            f"EJECUCIÓN RUTINA INICIADA | id={routine['id']} | nombre={routine['name']} | "
+            f"version={routine['version']} | pasos={len(records)} | step_delay={step_delay_seconds:.2f}s | "
+            "controles=F12 pausa/reanuda, Ctrl+F12 detiene"
+        )
 
     try:
         for position, record in enumerate(records):
+            if not started_ok:
+                break
             control["paused"], control["f12_latched"], stop_requested = wait_runtime_control(
                 control["paused"], control["f12_latched"]
             )
-            if stop_requested:
+            if stop_requested or (cancel_event is not None and cancel_event.is_set()):
                 stopped_by_hotkey = True
                 break
 
-            if not wait_until_events_finish(event_busy, control):
+            if not wait_until_events_finish(event_busy, control, cancel_event):
                 stopped_by_hotkey = True
                 break
 
@@ -261,7 +271,7 @@ def execute_routine(routine_id: str) -> dict[str, Any]:
 
                 if result.get("ok") and record.get("validation_image"):
                     validation = validate_step_checkpoint(
-                        routine["id"], record, execution_settings, control
+                        routine["id"], record, execution_settings, control, cancel_event
                     )
                     result["validation"] = validation
                     if validation.get("stopped"):
@@ -280,7 +290,7 @@ def execute_routine(routine_id: str) -> dict[str, Any]:
                 break
 
             if position < len(records) - 1:
-                if not wait_between_steps(event_busy, step_delay_seconds, control):
+                if not wait_between_steps(event_busy, step_delay_seconds, control, cancel_event):
                     stopped_by_hotkey = True
                     break
     finally:

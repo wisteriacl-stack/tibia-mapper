@@ -36,6 +36,7 @@
                 <div class="action-row">
                     <label class="grow">Rutina<input id="routineNameInput" list="routineNames" placeholder="Selecciona o escribe el nombre"><datalist id="routineNames"></datalist></label>
                     <button id="startRoutineBtn" class="primary">Iniciar</button>
+                    <button id="cancelRoutineBtn" class="danger" disabled>Cancelar</button>
                 </div>
                 <div class="info-box">Al iniciar, lleva Tibia al primer plano y presiona <kbd>F12</kbd>.</div>
                 <p id="runStatus" class="status"></p>
@@ -161,7 +162,44 @@ function renderSettings(){const m=settings.map_validation_region||{},b=settings.
 function updateRecordingUi(s=null){if(s){recordingActive=!!s.active;recordingRoutineId=s.routine_id||null}byId('recordingState').textContent=recordingActive?`Grabando ${recordingRoutineId}`:'Grabación detenida';byId('recordingDot').classList.toggle('active',recordingActive);byId('startRecordingBtn').disabled=recordingActive;byId('stopRecordingBtn').disabled=!recordingActive;byId('recordingEditorState').textContent=recordingActive?'Grabación activa · F12 coordenada · F11 validación.':'Grabación detenida.'}
 async function refreshAll(){const d=await fetch('/api/status').then(r=>r.json());routines=d.routines||[];events=d.events||[];settings=d.settings||settings;renderRoutines();renderEvents();renderSettings();updateRecordingUi(d.recording)}
 async function refreshSelectedRoutine(){if(!selectedRoutine)return;const d=await fetch(`/api/routines/${selectedRoutine.id}`).then(r=>r.json());if(d.ok)showRoutineEditor(d.routine)}
-byId('startRoutineBtn').onclick=async()=>{const b=byId('startRoutineBtn');b.disabled=true;toast('runStatus','Pon Tibia en primer plano y presiona F12…');try{const d=await fetch('/api/routines/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('routineNameInput').value.trim()})}).then(r=>r.json());toast('runStatus',d.message||d.error)}finally{b.disabled=false}}
+let currentRoutineJobId=null,routineJobPollTimer=null;
+function stopRoutineJobPoll(){clearTimeout(routineJobPollTimer);routineJobPollTimer=null}
+async function pollRoutineJob(){
+  if(!currentRoutineJobId)return;
+  const d=await fetch(`/api/jobs/${currentRoutineJobId}`).then(r=>r.json()).catch(()=>({ok:false}));
+  if(!d.ok){toast('runStatus','No se pudo consultar el job.');return}
+  const job=d.job||{};
+  if(job.status==='running'||job.status==='pending'){
+    toast('runStatus','Ejecutando… pon Tibia en primer plano y presiona F12 si aún no arrancó.');
+    routineJobPollTimer=setTimeout(pollRoutineJob,700);
+    return;
+  }
+  const result=job.result||{};
+  const label={done:'Rutina completada.',error:'Rutina con errores.',cancelled:'Rutina cancelada.'}[job.status]||job.status;
+  toast('runStatus',`${label} ${result.message||''} ${job.error||''}`.trim());
+  currentRoutineJobId=null;
+  byId('startRoutineBtn').disabled=false;
+  byId('cancelRoutineBtn').disabled=true;
+}
+byId('startRoutineBtn').onclick=async()=>{
+  const b=byId('startRoutineBtn');b.disabled=true;
+  toast('runStatus','Iniciando…');
+  try{
+    const d=await fetch('/api/routines/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('routineNameInput').value.trim()})}).then(r=>r.json());
+    if(!d.ok){toast('runStatus',d.error||'No se pudo iniciar la rutina.');b.disabled=false;return}
+    currentRoutineJobId=d.job_id;
+    byId('cancelRoutineBtn').disabled=false;
+    toast('runStatus','Pon Tibia en primer plano y presiona F12…');
+    stopRoutineJobPoll();
+    pollRoutineJob();
+  }catch(err){b.disabled=false;toast('runStatus',String(err))}
+}
+byId('cancelRoutineBtn').onclick=async()=>{
+  if(!currentRoutineJobId)return;
+  byId('cancelRoutineBtn').disabled=true;
+  await fetch(`/api/jobs/${currentRoutineJobId}/cancel`,{method:'POST'}).catch(()=>{});
+  toast('runStatus','Cancelando…');
+}
 byId('createRoutineForm').onsubmit=async e=>{e.preventDefault();const d=await fetch('/api/routines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('newRoutineName').value.trim(),version:byId('newRoutineVersion').value.trim()})}).then(r=>r.json());toast('createStatus',d.ok?'Rutina creada.':d.error);if(d.ok){routines=d.routines||[];renderRoutines();showRoutineEditor(d.routine)}}
 byId('saveRoutineBtn').onclick=async()=>{if(!selectedRoutine)return;const steps=[...byId('stepsList').querySelectorAll('.step-card')].map((c,i)=>({x:Number(c.querySelector('.step-x').value),y:Number(c.querySelector('.step-y').value),validation_image:selectedRoutine.steps?.[i]?.validation_image||null}));const d=await fetch(`/api/routines/${selectedRoutine.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:byId('editName').value,version:byId('editVersion').value,steps})}).then(r=>r.json());toast('editorStatus',d.ok?'Cambios guardados.':d.error);if(d.ok){selectedRoutine=d.routine;routines=d.routines||routines;renderRoutines();renderSteps()}}
 byId('insertStepBtn').onclick=async()=>{if(!selectedRoutine)return;const d=await fetch(`/api/routines/${selectedRoutine.id}/steps`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:Number(byId('insertIndex').value),x:Number(byId('insertX').value),y:Number(byId('insertY').value)})}).then(r=>r.json());if(d.ok){selectedRoutine=d.routine;renderSteps()}}

@@ -1,3 +1,4 @@
+import threading
 import time
 from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
@@ -29,6 +30,7 @@ from checkpoint_store import (
 )
 from decision_engine import decide
 from event_store import create_event, delete_event, get_event, list_events, update_event
+from job_store import cancel_job, create_job, get_cancel_event, get_job, update_job
 from mapper_store import add_point, delete_point, init_db, list_points
 from recorder import recording_status, start_recording, stop_recording
 from routine_executor import execute_routine
@@ -568,6 +570,40 @@ def routine_checkpoint_compare(routine_id, index):
     return jsonify(result)
 
 
+def _run_routine_job(job_id: str, routine_id: str, routine_name: str) -> None:
+    cancel_event = get_cancel_event(job_id)
+    update_job(job_id, status="running")
+    try:
+        execution = execute_routine(routine_id, cancel_event=cancel_event)
+    except ValueError as exc:
+        update_job(job_id, status="error", error=str(exc), finished_at=time.time())
+        return
+
+    if cancel_event is not None and cancel_event.is_set() and not execution.get("ok"):
+        status = "cancelled"
+    else:
+        status = "done" if execution.get("ok") else "error"
+
+    message = (
+        f"Rutina {routine_name} recorrida: "
+        f"{len(execution.get('results') or [])}/{len(execution.get('records') or [])} registros procesados."
+    )
+    update_job(
+        job_id,
+        status=status,
+        finished_at=time.time(),
+        result={
+            "ok": bool(execution.get("ok")),
+            "routine": execution.get("routine"),
+            "records": execution.get("records") or [],
+            "results": execution.get("results") or [],
+            "settings": execution.get("settings") or {},
+            "event_config": execution.get("event_config") or {},
+            "message": message,
+        },
+    )
+
+
 @app.post("/api/routines/start")
 def routines_start():
     payload = request.get_json(silent=True) or {}
@@ -576,23 +612,34 @@ def routines_start():
     if not routine:
         return jsonify({"ok": False, "error": "No existe una rutina con ese nombre."}), 404
 
-    try:
-        execution = execute_routine(routine["id"])
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    job = create_job("routine_execution")
+    threading.Thread(
+        target=_run_routine_job,
+        args=(job["id"], routine["id"], routine["name"]),
+        daemon=True,
+        name=f"routine-job-{job['id']}",
+    ).start()
+    return jsonify({"ok": True, "job_id": job["id"]}), 202
 
-    return jsonify({
-        "ok": bool(execution.get("ok")),
-        "routine": execution.get("routine"),
-        "records": execution.get("records") or [],
-        "results": execution.get("results") or [],
-        "settings": execution.get("settings") or {},
-        "event_config": execution.get("event_config") or {},
-        "message": (
-            f"Rutina {routine['name']} recorrida: "
-            f"{len(execution.get('results') or [])}/{len(execution.get('records') or [])} registros procesados."
-        ),
-    })
+
+@app.get("/api/jobs/<job_id>")
+def job_get(job_id):
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "Job no encontrado."}), 404
+    return jsonify({"ok": True, "job": job})
+
+
+@app.post("/api/jobs/<job_id>/cancel")
+def job_cancel(job_id):
+    ok = cancel_job(job_id)
+    if not ok:
+        job = get_job(job_id)
+        if not job:
+            return jsonify({"ok": False, "error": "Job no encontrado."}), 404
+        return jsonify({"ok": False, "error": "El job ya terminó; no se puede cancelar."}), 400
+    log_event(f"JOB cancelacion solicitada | id={job_id}")
+    return jsonify({"ok": True, "job": get_job(job_id)})
 
 
 @app.post("/api/recording/start")
