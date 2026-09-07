@@ -16,6 +16,7 @@ from battle_store import (
 from capture_utils import (
     capture_info,
     get_latest_capture,
+    stop_live_capture,
     wait_for_f12_position,
     wait_for_f12_region,
     wait_for_tibia_f10,
@@ -284,6 +285,13 @@ def battle_monitor_stop():
 @app.get("/api/battle/monitor/state")
 def battle_monitor_state():
     return jsonify({"ok": True, "monitor": battle_monitor_status()})
+
+
+@app.post("/api/capture/reset")
+def capture_reset():
+    stop_live_capture()
+    log_event("CAPTURA DXGI reiniciada manualmente")
+    return jsonify({"ok": True})
 
 
 @app.post("/api/health/start")

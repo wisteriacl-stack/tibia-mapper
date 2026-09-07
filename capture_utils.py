@@ -19,7 +19,11 @@ _LIVE_CAPTURE_LOCK = threading.Lock()
 _LIVE_CAMERA = None
 _LIVE_CAMERA_OUTPUT_IDX: int | None = None
 _LIVE_CAPTURE_ERROR: str | None = None
+_LIVE_CAPTURE_ERROR_AT: float = 0.0
+_LIVE_CAPTURE_FAILURES: int = 0
 _LIVE_CAPTURE_FPS = 30
+_RETRY_BASE_SECONDS = 2.0
+_RETRY_MAX_SECONDS = 60.0
 
 
 def get_capture_files():
@@ -207,6 +211,7 @@ def _configured_output_idx() -> int:
 
 def _start_live_camera(target_fps: int = _LIVE_CAPTURE_FPS, output_idx: int | None = None):
     global _LIVE_CAMERA, _LIVE_CAMERA_OUTPUT_IDX, _LIVE_CAPTURE_ERROR
+    global _LIVE_CAPTURE_ERROR_AT, _LIVE_CAPTURE_FAILURES
     if sys.platform != "win32":
         raise RuntimeError("La captura continua DXGI está disponible solo en Windows.")
 
@@ -224,9 +229,13 @@ def _start_live_camera(target_fps: int = _LIVE_CAPTURE_FPS, output_idx: int | No
             _LIVE_CAMERA = None
             _LIVE_CAMERA_OUTPUT_IDX = None
             _LIVE_CAPTURE_ERROR = None
+            _LIVE_CAPTURE_FAILURES = 0
 
         if _LIVE_CAPTURE_ERROR:
-            raise RuntimeError(_LIVE_CAPTURE_ERROR)
+            wait = min(_RETRY_MAX_SECONDS, _RETRY_BASE_SECONDS * (2 ** min(_LIVE_CAPTURE_FAILURES, 5)))
+            if time.monotonic() - _LIVE_CAPTURE_ERROR_AT < wait:
+                raise RuntimeError(_LIVE_CAPTURE_ERROR)
+            # ventana de backoff vencida: se permite reintentar abajo.
 
         try:
             import dxcam
@@ -235,11 +244,15 @@ def _start_live_camera(target_fps: int = _LIVE_CAPTURE_FPS, output_idx: int | No
             camera.start(target_fps=max(1, int(target_fps)), video_mode=True)
             _LIVE_CAMERA = camera
             _LIVE_CAMERA_OUTPUT_IDX = selected_output
+            _LIVE_CAPTURE_ERROR = None
+            _LIVE_CAPTURE_FAILURES = 0
             return camera
         except Exception as exc:
             _LIVE_CAPTURE_ERROR = (
                 f"No se pudo iniciar captura continua DXGI en output {selected_output}: {exc}"
             )
+            _LIVE_CAPTURE_ERROR_AT = time.monotonic()
+            _LIVE_CAPTURE_FAILURES += 1
             raise RuntimeError(_LIVE_CAPTURE_ERROR) from exc
 
 
@@ -280,11 +293,14 @@ def get_live_frame(
 
 def stop_live_capture() -> None:
     global _LIVE_CAMERA, _LIVE_CAMERA_OUTPUT_IDX, _LIVE_CAPTURE_ERROR
+    global _LIVE_CAPTURE_ERROR_AT, _LIVE_CAPTURE_FAILURES
     with _LIVE_CAPTURE_LOCK:
         camera = _LIVE_CAMERA
         _LIVE_CAMERA = None
         _LIVE_CAMERA_OUTPUT_IDX = None
         _LIVE_CAPTURE_ERROR = None
+        _LIVE_CAPTURE_ERROR_AT = 0.0
+        _LIVE_CAPTURE_FAILURES = 0
     if camera is not None:
         try:
             camera.stop()
