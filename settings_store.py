@@ -18,6 +18,11 @@ _battle_detection_enabled = False
 # proceso se reinició con un settings.json de una sesión anterior.
 _battle_auto_action_enabled = False
 
+# Mismo patrón para el subsistema de Eventos (T15): nunca se probó en
+# producción, así que sus acciones automáticas (click/move_mouse/write)
+# quedan detrás de un flag transitorio apagado por defecto.
+_events_auto_action_enabled = False
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "dxgi_output_idx": 0,
     "map_validation_region": {"x": 1752, "y": 27, "width": 107, "height": 110},
@@ -96,6 +101,7 @@ def _with_runtime_flags(settings: dict[str, Any]) -> dict[str, Any]:
     result = dict(settings)
     result["battle_detection_enabled"] = bool(_battle_detection_enabled)
     result["battle_auto_action_enabled"] = bool(_battle_auto_action_enabled)
+    result["events_auto_action_enabled"] = bool(_events_auto_action_enabled)
     return result
 
 
@@ -116,7 +122,7 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_settings(data: dict[str, Any]) -> dict[str, Any]:
-    global _battle_detection_enabled, _battle_auto_action_enabled
+    global _battle_detection_enabled, _battle_auto_action_enabled, _events_auto_action_enabled
 
     current = get_settings()
     incoming = dict(data or {})
@@ -132,6 +138,8 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
                 print(f"BATTLE MONITOR no pudo detenerse: {type(exc).__name__}: {exc}")
     if "battle_auto_action_enabled" in incoming:
         _battle_auto_action_enabled = bool(incoming.get("battle_auto_action_enabled"))
+    if "events_auto_action_enabled" in incoming:
+        _events_auto_action_enabled = bool(incoming.get("events_auto_action_enabled"))
 
     for region_key in (
         "map_validation_region",

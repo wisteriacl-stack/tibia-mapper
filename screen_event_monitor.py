@@ -6,8 +6,7 @@ import threading
 import time
 from typing import Any
 
-from PIL import ImageGrab
-
+from capture_utils import get_live_frame
 from event_store import get_event, list_events
 from mouse_helpers import execute_event_action
 from session_log import log_event
@@ -111,27 +110,128 @@ def wait_for_tibia_and_f12(poll_seconds: float = 0.05, cancel_event=None) -> boo
 
 
 def capture_event_region(event: dict[str, Any]):
+    """Captura la región del evento desde DXGI, en coordenadas locales del monitor.
+
+    Antes usaba ImageGrab.grab(all_screens=True), que trabaja en coordenadas del
+    escritorio virtual de Windows -- distintas de las coordenadas locales DXGI que
+    usa el resto del sistema (Battle, checkpoints). Las regiones de eventos
+    apuntaban a píxeles equivocados salvo que el monitor capturado empezara en
+    (0,0) del escritorio virtual.
+    """
     region = event.get("region") or {}
     x = int(region.get("x", 0))
     y = int(region.get("y", 0))
     width = max(1, int(region.get("width", 1)))
     height = max(1, int(region.get("height", 1)))
-    return ImageGrab.grab(bbox=(x, y, x + width, y + height), all_screens=True)
+
+    image, _meta = get_live_frame(tibia_title=TIBIA_TITLE_TEXT, timeout_seconds=2.0, target_fps=30)
+    right = x + width
+    bottom = y + height
+    if x < 0 or y < 0 or right > image.width or bottom > image.height:
+        raise ValueError(
+            f"La región del evento queda fuera de la captura DXGI. "
+            f"Captura={image.width}x{image.height}, región=({x},{y},{width},{height})."
+        )
+    return image.crop((x, y, right, bottom))
+
+
+def _normalize_ocr_text(value: str) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
+def _analyze_detect_text(event_id: str | None, image, trigger: dict[str, Any]) -> dict[str, Any]:
+    target_text = _normalize_ocr_text(str(trigger.get("text") or ""))
+    if not target_text:
+        return {
+            "detected": False,
+            "event_id": event_id,
+            "reason": "El gatillo detect_text no tiene texto configurado.",
+        }
+
+    from bestiary_reader import read_bestiary
+
+    try:
+        result = read_bestiary(image, {"x": 0, "y": 0, "width": image.width, "height": image.height})
+    except Exception as exc:
+        return {"detected": False, "event_id": event_id, "reason": f"{type(exc).__name__}: {exc}"}
+
+    if not result.get("ok"):
+        return {"detected": False, "event_id": event_id, "reason": result.get("error") or "OCR no disponible."}
+
+    tokens = [str(token.get("text") or "") for token in result.get("tokens") or []]
+    joined = _normalize_ocr_text(" ".join(tokens))
+    detected = target_text in joined
+
+    return {
+        "detected": detected,
+        "event_id": event_id,
+        "matched_text": trigger.get("text"),
+        "ocr_tokens": tokens,
+        "reason": None if detected else f"Texto '{trigger.get('text')}' no encontrado en la región (OCR: {tokens}).",
+    }
+
+
+def _analyze_battle_reference(event_id: str | None, image, trigger: dict[str, Any]) -> dict[str, Any]:
+    reference_id = str(trigger.get("reference_id") or "").strip()
+    if not reference_id:
+        return {
+            "detected": False,
+            "event_id": event_id,
+            "reason": "El gatillo battle_reference no tiene reference_id configurado.",
+        }
+
+    from PIL import Image as PILImage
+
+    from battle_monitor import _best_match
+    from battle_store import battle_target_image_path
+
+    path = battle_target_image_path(reference_id)
+    if not path:
+        return {
+            "detected": False,
+            "event_id": event_id,
+            "reason": f"Referencia battle '{reference_id}' no encontrada.",
+        }
+
+    template = PILImage.open(path).convert("RGB")
+    match = _best_match(image, template)
+    similarity = float(match.get("similarity", 0.0)) if match else 0.0
+    threshold = 0.90
+    detected = bool(match and similarity >= threshold)
+
+    return {
+        "detected": detected,
+        "event_id": event_id,
+        "reference_id": reference_id,
+        "similarity": round(similarity, 4),
+        "threshold": threshold,
+        "reason": None if detected else f"Similitud {similarity:.4f} bajo el umbral {threshold}.",
+    }
 
 
 def analyze_event_region(event: dict[str, Any], image) -> dict[str, Any]:
-    """Punto de extensión del detector. Por ahora no marca eventos como detectados."""
-    grayscale = image.convert("L")
-    histogram = grayscale.histogram()
-    total = sum(histogram) or 1
-    mean_brightness = sum(value * count for value, count in enumerate(histogram)) / total
+    """Detector real de eventos: interpreta event['trigger'] segun su tipo.
+
+    - detect_text: OCR sobre la region (bestiary_reader.read_bestiary reutilizado
+      como lector de texto generico) y busca el texto configurado.
+    - battle_reference: reutiliza battle_monitor._best_match para localizar una
+      referencia visual de Battle dentro de la region.
+    - legacy_manual (o cualquier otro): sin detector automatico definido.
+    """
+    trigger = dict(event.get("trigger") or {})
+    trigger_type = str(trigger.get("type") or "").strip()
+    event_id = event.get("id")
+
+    if trigger_type == "detect_text":
+        return _analyze_detect_text(event_id, image, trigger)
+    if trigger_type == "battle_reference":
+        return _analyze_battle_reference(event_id, image, trigger)
 
     return {
         "detected": False,
-        "event_id": event.get("id"),
-        "mean_brightness": round(mean_brightness, 2),
+        "event_id": event_id,
         "size": image.size,
-        "reason": "Detector todavía no definido para este evento.",
+        "reason": f"Sin detector para el tipo de gatillo '{trigger_type or 'desconocido'}'.",
     }
 
 
