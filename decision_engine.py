@@ -87,12 +87,9 @@ def build_context(
         "current_target_id": current_target_id,
         "current_target_name": (
             (current_target or {}).get("name")
-            or state.get("bestiary_target_name")
             or (state.get("current_match") or {}).get("name")
         ),
         "action_elapsed_seconds": state.get("action_elapsed_seconds"),
-        "bestiary_before": state.get("bestiary_target_before"),
-        "bestiary_current": state.get("bestiary_target_current"),
         "candidates": candidates,
         "telemetry": dict(telemetry or {}),
     }
@@ -134,17 +131,12 @@ def decide(
             reason="Hay un análisis visual en curso; es mejor esperar un estado consistente.",
         )
     elif context["action_locked"] and context.get("current_target_id"):
-        before = context.get("bestiary_before")
-        current = context.get("bestiary_current")
-        progress = ""
-        if before is not None and current is not None:
-            progress = f" Bestiary observado: {before} → {current}."
         decision = Decision(
             recommendation="keep_observing_current",
             target_id=str(context["current_target_id"]),
             target_name=str(context.get("current_target_name") or context["current_target_id"]),
             confidence=0.97,
-            reason="Ya existe un objetivo bloqueado por el estado Battle; no conviene cambiar la recomendación hasta que el ciclo termine." + progress,
+            reason="Ya existe un objetivo bloqueado por el estado Battle; no conviene cambiar la recomendación hasta que el ciclo termine.",
         )
     elif context["candidates"]:
         first = context["candidates"][0]

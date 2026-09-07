@@ -24,7 +24,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "battle_event_region": {"x": 466, "y": 60, "width": 420, "height": 480},
     "battle_reference_region": {"x": 466, "y": 60, "width": 420, "height": 55},
     "battle_action_region": {"x": 1378, "y": 41, "width": 40, "height": 40},
-    "bestiary_tracker_region": {"x": 60, "y": 52, "width": 380, "height": 160},
     "loot_tracker_region": {"x": 940, "y": 260, "width": 360, "height": 295},
     "loot_similarity_threshold": 0.975,
     "loot_change_confirmations": 1,
@@ -69,7 +68,6 @@ def _normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
         "battle_event_region": _normalize_region(data.get("battle_event_region"), "battle_event_region"),
         "battle_reference_region": _normalize_region(data.get("battle_reference_region"), "battle_reference_region"),
         "battle_action_region": _normalize_region(data.get("battle_action_region"), "battle_action_region"),
-        "bestiary_tracker_region": _normalize_region(data.get("bestiary_tracker_region"), "bestiary_tracker_region"),
         "loot_tracker_region": _normalize_region(data.get("loot_tracker_region"), "loot_tracker_region"),
         "health_value_region": _normalize_region(data.get("health_value_region"), "health_value_region"),
         "loot_similarity_threshold": min(1.0, max(0.0, float(data.get("loot_similarity_threshold", DEFAULT_SETTINGS["loot_similarity_threshold"])))),
@@ -140,7 +138,6 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
         "battle_event_region",
         "battle_reference_region",
         "battle_action_region",
-        "bestiary_tracker_region",
         "loot_tracker_region",
         "health_value_region",
     ):

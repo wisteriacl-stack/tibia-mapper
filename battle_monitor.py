@@ -546,14 +546,6 @@ def battle_runtime_status(
         "loot_enabled": bool(_runtime.action_loot_enabled),
         "loot_requested": bool(loot_requested),
         "last_loot_enabled": bool(_runtime.last_loot_enabled),
-        # Campos legacy para que la UI existente no falle mientras se retira Bestiary.
-        "bestiary_target_name": None,
-        "bestiary_target_before": None,
-        "bestiary_target_current": None,
-        "bestiary_value_region": None,
-        "bestiary_snapshot": None,
-        "last_bestiary_before": None,
-        "last_bestiary_after": None,
         "busy": False,
     }
 
