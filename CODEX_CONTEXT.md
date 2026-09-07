@@ -26,6 +26,32 @@ Read this file **before modifying anything**.
 > directly into `app.py`, since `launcher.py` (used by `tibia-mapper.spec` to build the EXE)
 > only ever imported `app.py` — the packaged EXE never had the AI/map routes. Run `python
 > app.py` for everything now; there is no separate AI entry point anymore.
+>
+> **T15 also implemented (2026-09-07):** `screen_event_monitor.analyze_event_region()` now
+> has a real detector (`detect_text` via `bestiary_reader.read_bestiary()` reused as a
+> generic OCR text reader; `battle_reference` via `battle_monitor._best_match()`), and the
+> 5 handlers in `mouse_helpers.py` execute real input, gated by a new transient
+> `events_auto_action_enabled` flag (off by default) plus a foreground check — same pattern
+> as `battle_auto_action_enabled`. B8 was also fixed: `capture_event_region()` now uses
+> `get_live_frame()` (DXGI-local coordinates) instead of `ImageGrab.grab(all_screens=True)`
+> (virtual-desktop coordinates).
+>
+> **CRITICAL, READ BEFORE TRUSTING ANY "verified with real Tibia" CLAIM ABOVE OR IN
+> `IMPLEMENTACION_MEJORAS.md`:** on 2026-09-07, screen capture of Tibia on the user's
+> machine was found to return **pure black** via *both* DXGI Desktop Duplication (`dxcam`,
+> what `get_live_frame()` uses) *and* Windows Game Bar (`Win+Alt+PrtScn`) — two independent
+> capture mechanisms. The NVIDIA Alt+F1 fallback (`request_nvidia_capture()`) doesn't fire
+> either (confirmed by the user; NVIDIA App installed but Alt+F1 does nothing). Likely
+> cause: Tibia's client actively excludes its window from capture (similar to
+> `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`, common in anti-cheat), though a
+> hybrid-GPU (Intel UHD 770 + NVIDIA RTX 3070) capture-adapter mismatch was also considered
+> and not fully ruled out. **This means the entire visual pipeline (Battle, Loot, Health
+> OCR, checkpoints) could not see real Tibia content in that session** — a Battle
+> "reference" recaptured live turned out to be solid black (see the `_best_match_cv2` flat-
+> template bug fix, same session), and every "confirmed working with real Tibia" claim made
+> earlier in that session for T1/T2/T4 is almost certainly invalid (black compared against
+> black). Before trusting *any* live-Tibia test result on this machine, first confirm a
+> fresh `get_live_frame()` capture actually shows real game content, not black.
 
 ## Repository
 
