@@ -4,6 +4,17 @@
 **Rama analizada:** `feature/ai-advisor`
 **Alcance:** revisión estática completa del código Python, frontend, empaquetado y datos de sesión (`logs/`, `settings.json`, `routines/`, `battle_targets/`).
 
+> **Estado tras implementación (2026-09-07):** T1 a T5 de `IMPLEMENTACION_MEJORAS.md`
+> ya están implementadas en esta rama. En particular:
+> - **B3 / Camino B** (línea 246 y 280 de este documento): implementado. `execute_battle_action()`
+>   ahora usa `screen_x`/`screen_y` del match real, exige `battle_auto_action_enabled=True`
+>   (flag transitorio, apagado por defecto) y `tibia_is_foreground()` antes de clicar. El log de
+>   auditoría ya no miente sobre `input_executed`.
+> - El monitor Battle dejó de vivir en el navegador; ver `battle_monitor_thread.py` y la sección
+>   T4 de `IMPLEMENTACION_MEJORAS.md`.
+> - Las secciones de abajo describen el estado **encontrado antes de estos cambios**; se
+>   conservan como registro histórico del análisis, no como estado actual del código.
+
 ---
 
 ## 1. Resumen ejecutivo

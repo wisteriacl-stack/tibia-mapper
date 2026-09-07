@@ -6,6 +6,20 @@ This file is the handoff context for continuing development of this repository i
 
 Read this file **before modifying anything**.
 
+> **Update (2026-09-07):** T1-T5 from `IMPLEMENTACION_MEJORAS.md` are implemented on this
+> branch. Notably: Battle target matching now uses `cv2.matchTemplate` (with a bruteforce
+> fallback if OpenCV is unavailable) instead of a pixel-by-pixel scan; the Battle detection
+> loop now runs in a backend thread (`battle_monitor_thread.py`) instead of the browser;
+> routine checkpoints are validated during execution; and Battle can optionally execute a
+> real click via `battle_action_executor.py`, gated by the transient
+> `battle_auto_action_enabled` flag (off by default) plus a foreground check — this is a
+> deliberate, user-confirmed exception to "AI Advisor is advisory/read-only" below, which
+> still applies to `ai_advisor.py` itself.
+>
+> Also: the actual git remote configured for this checkout is
+> `https://github.com/escuelaalz1-debug/titian-mapper`, not `tibia-mapper` as named below —
+> flagging the discrepancy rather than silently correcting it.
+
 ## Repository
 
 - Repository: `escuelaalz1-debug/tibia-mapper`
