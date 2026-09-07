@@ -47,3 +47,16 @@ def test_dxgi_output_idx_never_negative():
 def test_validation_failure_continues_defaults_to_false():
     result = _normalize_settings({})
     assert result["validation_failure_continues"] is False
+
+
+def test_capture_backend_defaults_to_dxgi_and_rejects_unknown_values():
+    assert _normalize_settings({})["capture_backend"] == "dxgi"
+    assert _normalize_settings({"capture_backend": "obs_camera"})["capture_backend"] == "obs_camera"
+    assert _normalize_settings({"capture_backend": "algo_invalido"})["capture_backend"] == "dxgi"
+
+
+def test_obs_ws_password_defaults_to_empty_string():
+    result = _normalize_settings({})
+    assert result["obs_ws_password"] == ""
+    assert result["obs_ws_host"] == "localhost"
+    assert result["obs_ws_port"] == 4455

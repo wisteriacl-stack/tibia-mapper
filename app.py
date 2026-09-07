@@ -59,6 +59,11 @@ if _purged_sessions:
 if get_settings().get("health_monitor_enabled", True):
     start_health_monitor()
 
+if get_settings().get("capture_backend") == "obs_camera":
+    import obs_bridge
+
+    threading.Thread(target=obs_bridge.ensure_capture_ready, daemon=True, name="obs-bridge-startup").start()
+
 
 @app.before_request
 def require_local_header():
@@ -313,6 +318,17 @@ def capture_reset():
     stop_live_capture()
     log_event("CAPTURA DXGI reiniciada manualmente")
     return jsonify({"ok": True})
+
+
+@app.post("/api/capture/obs/ensure")
+def capture_obs_ensure():
+    """Lanza OBS si no está corriendo, conecta por websocket y activa la
+    Cámara Virtual. Usar cuando capture_backend="obs_camera" y Tibia
+    bloquea la captura de pantalla convencional."""
+    import obs_bridge
+
+    result = obs_bridge.ensure_capture_ready()
+    return jsonify({"ok": bool(result.get("ok")), "result": result})
 
 
 @app.post("/api/health/start")

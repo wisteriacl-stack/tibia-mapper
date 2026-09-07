@@ -25,6 +25,20 @@ _events_auto_action_enabled = False
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "dxgi_output_idx": 0,
+    # "dxgi" (captura de pantalla convencional) o "obs_camera" (lee la Camara
+    # Virtual de OBS). Tibia bloquea la captura de pantalla convencional
+    # (DXGI Desktop Duplication y Windows Game Bar dan negro); OBS si puede
+    # verlo via su fuente "Captura de juego" con el enganche de compatibilidad
+    # anti-cheat activado.
+    "capture_backend": "dxgi",
+    "obs_camera_index": 0,
+    # Usados por obs_bridge.py para lanzar OBS y conectarse a obs-websocket
+    # (Herramientas > Configuración de WebSocket dentro de OBS). La contraseña
+    # es local a la instalación de OBS del usuario; nunca debe quedar hardcodeada.
+    "obs_executable_path": "",
+    "obs_ws_host": "localhost",
+    "obs_ws_port": 4455,
+    "obs_ws_password": "",
     "map_validation_region": {"x": 1752, "y": 27, "width": 107, "height": 110},
     "battle_event_region": {"x": 466, "y": 60, "width": 420, "height": 480},
     "battle_reference_region": {"x": 466, "y": 60, "width": 420, "height": 55},
@@ -69,6 +83,14 @@ def _normalize_settings(data: dict[str, Any] | None) -> dict[str, Any]:
     data = dict(data or {})
     return {
         "dxgi_output_idx": max(0, int(data.get("dxgi_output_idx", DEFAULT_SETTINGS["dxgi_output_idx"]))),
+        "capture_backend": (
+            "obs_camera" if str(data.get("capture_backend") or "dxgi").strip().lower() == "obs_camera" else "dxgi"
+        ),
+        "obs_camera_index": max(0, int(data.get("obs_camera_index", DEFAULT_SETTINGS["obs_camera_index"]))),
+        "obs_executable_path": str(data.get("obs_executable_path") or "").strip(),
+        "obs_ws_host": str(data.get("obs_ws_host") or DEFAULT_SETTINGS["obs_ws_host"]).strip(),
+        "obs_ws_port": max(1, int(data.get("obs_ws_port", DEFAULT_SETTINGS["obs_ws_port"]))),
+        "obs_ws_password": str(data.get("obs_ws_password") or ""),
         "map_validation_region": _normalize_region(data.get("map_validation_region"), "map_validation_region"),
         "battle_event_region": _normalize_region(data.get("battle_event_region"), "battle_event_region"),
         "battle_reference_region": _normalize_region(data.get("battle_reference_region"), "battle_reference_region"),
@@ -153,6 +175,12 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
             current[region_key] = incoming[region_key]
     for key in (
         "dxgi_output_idx",
+        "capture_backend",
+        "obs_camera_index",
+        "obs_executable_path",
+        "obs_ws_host",
+        "obs_ws_port",
+        "obs_ws_password",
         "loot_similarity_threshold",
         "loot_change_confirmations",
         "health_monitor_enabled",

@@ -1,5 +1,11 @@
 {
   "dxgi_output_idx": 0,
+  "capture_backend": "obs_camera",
+  "obs_camera_index": 1,
+  "obs_executable_path": "",
+  "obs_ws_host": "localhost",
+  "obs_ws_port": 4455,
+  "obs_ws_password": "",
   "map_validation_region": {
     "x": 1701,
     "y": 67,
@@ -7,16 +13,16 @@
     "height": 25
   },
   "battle_event_region": {
-    "x": 466,
-    "y": 60,
-    "width": 420,
-    "height": 480
+    "x": 1782,
+    "y": 298,
+    "width": 138,
+    "height": 60
   },
   "battle_reference_region": {
-    "x": 466,
-    "y": 60,
-    "width": 420,
-    "height": 55
+    "x": 1782,
+    "y": 300,
+    "width": 138,
+    "height": 20
   },
   "battle_action_region": {
     "x": 1699,

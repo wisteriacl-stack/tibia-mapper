@@ -23,7 +23,12 @@ _LIVE_CAPTURE_ERROR_AT: float = 0.0
 _LIVE_CAPTURE_FAILURES: int = 0
 _LIVE_CAPTURE_FPS = 30
 _RETRY_BASE_SECONDS = 2.0
+
 _RETRY_MAX_SECONDS = 60.0
+
+_OBS_CAMERA_LOCK = threading.Lock()
+_OBS_CAMERA = None
+_OBS_CAMERA_INDEX: int | None = None
 
 
 def get_capture_files():
@@ -256,18 +261,128 @@ def _start_live_camera(target_fps: int = _LIVE_CAPTURE_FPS, output_idx: int | No
             raise RuntimeError(_LIVE_CAPTURE_ERROR) from exc
 
 
+def _configured_capture_backend() -> str:
+    try:
+        from settings_store import get_settings
+
+        return str(get_settings().get("capture_backend") or "dxgi").strip().lower()
+    except Exception:
+        return "dxgi"
+
+
+def _configured_obs_camera_index() -> int:
+    try:
+        from settings_store import get_settings
+
+        return max(0, int(get_settings().get("obs_camera_index", 0)))
+    except Exception:
+        return 0
+
+
+def _start_obs_camera(index: int):
+    """Abre (o reutiliza) la Cámara Virtual de OBS como fuente de video.
+
+    Tibia bloquea la captura de pantalla convencional (DXGI Desktop Duplication
+    y Windows Game Bar dan negro). OBS sí puede verlo via su fuente "Captura de
+    juego" con el enganche de compatibilidad anti-cheat activado; su Cámara
+    Virtual expone ese mismo contenido como un dispositivo de video estándar
+    que cv2.VideoCapture puede leer, igual que una webcam.
+    """
+    global _OBS_CAMERA, _OBS_CAMERA_INDEX
+    with _OBS_CAMERA_LOCK:
+        if _OBS_CAMERA is not None and _OBS_CAMERA_INDEX == index:
+            return _OBS_CAMERA
+        if _OBS_CAMERA is not None:
+            try:
+                _OBS_CAMERA.release()
+            except Exception:
+                pass
+            _OBS_CAMERA = None
+            _OBS_CAMERA_INDEX = None
+
+        import cv2
+
+        camera = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if not camera.isOpened():
+            camera.release()
+            raise RuntimeError(
+                f"No se pudo abrir la Cámara Virtual de OBS en el índice {index}. "
+                "Verifica que OBS esté corriendo y que 'Iniciar Cámara Virtual' esté activo."
+            )
+        # cv2/DirectShow negocia 640x480 por defecto si no se pide otra cosa.
+        # Pedimos la resolucion del canvas base de OBS explicitamente para no
+        # perder detalle (afecta directamente la precision del matching y OCR).
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        _OBS_CAMERA = camera
+        _OBS_CAMERA_INDEX = index
+        return camera
+
+
+def _get_obs_camera_frame(timeout_seconds: float) -> tuple[Image.Image, dict]:
+    import cv2
+
+    index = _configured_obs_camera_index()
+    camera = _start_obs_camera(index)
+    started = time.perf_counter()
+    deadline = time.monotonic() + max(0.5, float(timeout_seconds))
+
+    ok, frame = False, None
+    while time.monotonic() < deadline:
+        ok, frame = camera.read()
+        if ok and frame is not None:
+            break
+
+    if not ok or frame is None:
+        raise TimeoutError(
+            f"La Cámara Virtual de OBS (índice {index}) no entregó un frame dentro del tiempo de espera."
+        )
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image = Image.fromarray(rgb)
+    return image, {
+        "source": "obs_camera",
+        "obs_camera_index": index,
+        "acquire_ms": round((time.perf_counter() - started) * 1000.0, 2),
+        "width": image.width,
+        "height": image.height,
+        "foreground_required": False,
+    }
+
+
+def stop_obs_camera() -> None:
+    global _OBS_CAMERA, _OBS_CAMERA_INDEX
+    with _OBS_CAMERA_LOCK:
+        camera = _OBS_CAMERA
+        _OBS_CAMERA = None
+        _OBS_CAMERA_INDEX = None
+    if camera is not None:
+        try:
+            camera.release()
+        except Exception:
+            pass
+
+
 def get_live_frame(
     tibia_title: str = DEFAULT_TIBIA_TITLE,
     timeout_seconds: float = 2.0,
     target_fps: int = _LIVE_CAPTURE_FPS,
     output_idx: int | None = None,
 ) -> tuple[Image.Image, dict]:
-    """Devuelve el frame RGB más reciente desde un capturador DXGI continuo.
+    """Devuelve el frame RGB más reciente desde el backend de captura configurado.
 
-    El output se obtiene de settings.dxgi_output_idx salvo que se entregue uno
-    explícitamente. Esto permite leer una escena OBS proyectada en un monitor
-    específico manteniendo todas las regiones en coordenadas locales de ese monitor.
+    settings.capture_backend elige entre:
+    - "dxgi" (default): DXGI Desktop Duplication continua. El output se obtiene
+      de settings.dxgi_output_idx salvo que se entregue uno explícitamente. Esto
+      permite leer una escena OBS proyectada en un monitor específico
+      manteniendo todas las regiones en coordenadas locales de ese monitor.
+    - "obs_camera": lee la Cámara Virtual de OBS (settings.obs_camera_index) via
+      OpenCV. Necesario cuando Tibia bloquea la captura de pantalla convencional
+      pero OBS sí puede verlo con su fuente "Captura de juego".
     """
+    if _configured_capture_backend() == "obs_camera":
+        return _get_obs_camera_frame(timeout_seconds)
+
     selected_output = _configured_output_idx() if output_idx is None else max(0, int(output_idx))
     camera = _start_live_camera(target_fps=target_fps, output_idx=selected_output)
     deadline = time.monotonic() + max(0.5, float(timeout_seconds))
@@ -306,6 +421,7 @@ def stop_live_capture() -> None:
             camera.stop()
         except Exception:
             pass
+    stop_obs_camera()
 
 
 def request_nvidia_capture(
