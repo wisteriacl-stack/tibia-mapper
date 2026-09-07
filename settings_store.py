@@ -5,6 +5,7 @@ import threading
 from typing import Any
 
 from app_paths import RUNTIME_ROOT
+from atomic_json import write_json_atomic
 
 SETTINGS_PATH = RUNTIME_ROOT / "settings.json"
 
@@ -113,7 +114,7 @@ def get_settings() -> dict[str, Any]:
 
 def save_settings(data: dict[str, Any]) -> dict[str, Any]:
     normalized = _normalize_settings(data)
-    SETTINGS_PATH.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(SETTINGS_PATH, normalized)
     return _with_runtime_flags(normalized)
 
 

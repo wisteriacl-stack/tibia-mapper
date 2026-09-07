@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from app_paths import RUNTIME_ROOT
+from atomic_json import write_json_atomic
+from session_log import log_event
 
 BASE_DIR = RUNTIME_ROOT
 EVENTS_DIR = BASE_DIR / "events"
@@ -38,7 +40,8 @@ def list_events() -> list[dict[str, Any]]:
             data = json.loads(path.read_text(encoding="utf-8"))
             data["id"] = path.stem
             result.append(data)
-        except Exception:
+        except Exception as exc:
+            log_event(f"STORE ERROR | archivo ilegible: {path.name} | {type(exc).__name__}: {exc}")
             continue
     return result
 
@@ -143,7 +146,7 @@ def save_event(event_id: str, data: dict[str, Any]) -> dict[str, Any]:
     payload["updated_at"] = _now()
     payload.setdefault("created_at", _now())
 
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(path, payload)
     return get_event(path.stem)
 
 

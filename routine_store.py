@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from app_paths import RUNTIME_ROOT
+from atomic_json import write_json_atomic
+from session_log import log_event
 
 BASE_DIR = RUNTIME_ROOT
 ROUTINES_DIR = BASE_DIR / "routines"
@@ -96,7 +98,8 @@ def list_routines() -> list[dict[str, Any]]:
             )
             data["event_config"] = _normalize_event_config(data.get("event_config"))
             routines.append(data)
-        except Exception:
+        except Exception as exc:
+            log_event(f"STORE ERROR | archivo ilegible: {path.name} | {type(exc).__name__}: {exc}")
             continue
     return routines
 
@@ -153,7 +156,7 @@ def save_routine(routine_id: str, data: dict[str, Any]) -> None:
     payload["updated_at"] = _now()
     payload["steps"] = [_normalize_step(step) for step in (payload.get("steps") or [])]
     payload["event_config"] = _normalize_event_config(payload.get("event_config"))
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(path, payload)
 
 
 def update_routine(routine_id: str, name: str, version: str, steps: list[dict[str, Any]]) -> dict[str, Any]:

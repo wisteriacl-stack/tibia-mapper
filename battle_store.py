@@ -8,6 +8,7 @@ from typing import Any
 
 from PIL import Image
 from app_paths import RUNTIME_ROOT
+from atomic_json import write_json_atomic
 
 BASE_DIR = RUNTIME_ROOT
 BATTLE_DIR = BASE_DIR / "battle_targets"
@@ -45,10 +46,7 @@ def _load_index() -> list[dict[str, Any]]:
 
 
 def _save_index(items: list[dict[str, Any]]) -> None:
-    INDEX_PATH.write_text(
-        json.dumps([_normalize_item(item) for item in items], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_json_atomic(INDEX_PATH, [_normalize_item(item) for item in items])
 
 
 def list_battle_targets() -> list[dict[str, Any]]:
