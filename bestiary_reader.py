@@ -277,6 +277,38 @@ def read_bestiary_number(
     }
 
 
+def _split_merged_current_max(digits: str, max_value: int) -> int | None:
+    """Divide "87160" -> 87 (de "87/160") solo si hay una unica division valida.
+
+    Una division (izquierda, derecha) es valida si ambos lados son numeros
+    positivos, la derecha (el maximo) es mayor o igual a la izquierda (el
+    actual), y ninguno excede max_value. Si mas de una posicion de corte
+    produce una division valida, el resultado es ambiguo y se descarta en
+    vez de adivinar.
+    """
+    valid_splits: list[int] = []
+    for cut in range(1, len(digits)):
+        left, right = digits[:cut], digits[cut:]
+        # Un HP real casi nunca se muestra como un solo digito ("8/7160");
+        # exigir al menos 2 digitos por lado descarta esos cortes espurios.
+        if len(left) < 2 or len(right) < 2:
+            continue
+        if left.startswith("0") or right.startswith("0"):
+            continue
+        left_value, right_value = int(left), int(right)
+        if left_value <= 0 or right_value <= 0:
+            continue
+        if left_value > max_value or right_value > max_value:
+            continue
+        if right_value < left_value:
+            continue
+        valid_splits.append(left_value)
+
+    if len(valid_splits) == 1:
+        return valid_splits[0]
+    return None
+
+
 def read_health_number(
     image: Image.Image,
     region: dict[str, Any],
@@ -311,6 +343,7 @@ def read_health_number(
     candidates: list[tuple[float, int, str]] = []
     raw_tokens: list[str] = []
     rejected_tokens: list[dict[str, Any]] = []
+    merged_digit_runs: list[tuple[str, float]] = []
 
     for item in result or []:
         if not item or len(item) < 3:
@@ -321,6 +354,17 @@ def read_health_number(
             continue
         raw_tokens.append(text)
 
+        # Algunos clientes muestran "actual/máximo" en una sola barra (ej. "87/160").
+        # Si el OCR sí reconoce la barra, tomamos el lado izquierdo como HP actual.
+        slash_match = re.fullmatch(r"(\d{1,6})/(\d{1,6})", text)
+        if slash_match:
+            value = int(slash_match.group(1))
+            if value <= max_value:
+                candidates.append((score, value, text))
+            else:
+                rejected_tokens.append({"text": text, "score": round(score, 4), "reason": "above_max_value"})
+            continue
+
         # HP debe venir como un único token numérico. No concatenamos grupos
         # separados porque "920 261 108" terminaría convertido en 920261108.
         if not re.fullmatch(r"\d{1,6}", text):
@@ -329,10 +373,21 @@ def read_health_number(
 
         value = int(text)
         if value > max_value:
+            # El "/" de "actual/máximo" a veces se pierde en el OCR y ambos
+            # números quedan pegados (ej. "87160" en vez de "87/160"). Se
+            # intenta una única division no ambigua antes de descartarlo.
+            if len(text) >= 4:
+                merged_digit_runs.append((text, score))
             rejected_tokens.append({"text": text, "score": round(score, 4), "reason": "above_max_value"})
             continue
 
         candidates.append((score, value, text))
+
+    if not candidates:
+        for text, score in merged_digit_runs:
+            split = _split_merged_current_max(text, max_value)
+            if split is not None:
+                candidates.append((score, split, f"{text} (dividido)"))
 
     if not candidates:
         return {

@@ -7,10 +7,10 @@
   "obs_ws_port": 4455,
   "obs_ws_password": "",
   "map_validation_region": {
-    "x": 1701,
-    "y": 67,
-    "width": 169,
-    "height": 25
+    "x": 1785,
+    "y": 5,
+    "width": 90,
+    "height": 80
   },
   "battle_event_region": {
     "x": 1782,
@@ -37,10 +37,10 @@
     "height": 295
   },
   "health_value_region": {
-    "x": 800,
-    "y": 300,
-    "width": 180,
-    "height": 80
+    "x": 385,
+    "y": 0,
+    "width": 50,
+    "height": 14
   },
   "loot_similarity_threshold": 0.975,
   "loot_change_confirmations": 1,
